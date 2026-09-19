@@ -41,7 +41,7 @@ Generated, git-ignored files:
 
 `dev/mock-osir/router.php` implements the subset of the OSIR API the adapter uses. It follows the documented
 contract, **including its quirks**: several error shapes, `available:false` on failed checks, the
-idempotency semantics (scope, narrow fingerprint, replay of stored 2xx/5xx, `REQUEST_IN_PROGRESS`), zone-less
+idempotency semantics (scope, replay of stored 2xx/5xx, `REQUEST_IN_PROGRESS`), zone-less
 UTC dates and cents.
 
 Scenarios are driven by domain labels (`taken*`, `premium*`, `outage*`, `mine*`, `foreign*`) and by control endpoints:

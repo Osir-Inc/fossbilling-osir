@@ -7,10 +7,10 @@ declare(strict_types=1);
  *
  * It reproduces the parts of the API contract the adapter relies on, including the edge cases the
  * adapter must handle:
- *   - mixed response shapes (EPPApiResponse envelope, unwrapped DTOs, ownership-helper errors,
+ *   - mixed response shapes (the {success,data} envelope, bare objects, ownership errors,
  *     empty 401 bodies, the rate limiter's shape);
  *   - availability answering available:false with an explanation when the check could not complete;
- *   - Idempotency-Key semantics: per (customer, endpoint) scope, narrow fingerprint, replay of
+ *   - Idempotency-Key semantics: per (customer, endpoint) scope, replay of
  *     stored 2xx/5xx with `Idempotent-Replay: true`, 409 REQUEST_IN_PROGRESS, 4xx releases the key;
  *   - dates as zone-less ISO-8601 in UTC; money in integer cents.
  *
@@ -187,7 +187,7 @@ if (str_starts_with($path, '/__mock/')) {
 
 file_put_contents(LOG_FILE, json_encode($logEntry, JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND | LOCK_EX);
 
-// ---------------------------------------------------------------- authentication (empty 401 like Quarkus)
+// ---------------------------------------------------------------- authentication (empty 401 body, as OSIR answers)
 
 if ($customer === null) {
     respond(401, null, ['WWW-Authenticate' => 'API-Key']);

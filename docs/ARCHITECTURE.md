@@ -166,4 +166,4 @@ orders without an expiry.
 |---|---|---|
 | Unit | `tests/Unit` | Every class. `ScriptedHttpClient` records exactly what would be sent to OSIR. FOSSBilling's real classes come from the pinned 0.8.7 release. |
 | Static analysis | `phpstan.neon.dist` | Level max, plus strict rules, over `src` and `tests`. |
-| End-to-end | `dev/e2e/run.php` | Real FOSSBilling 0.8.7 in Docker, driven through its admin API, against a stateful TLS mock of the OSIR API (83 checks). Fault injection covers lost answers (also on replays), fresh and stored 5xx, and registry auto-renew; `foreign*` domains answer with OSIR's ownership 403. The mock does not model OSIR's per-environment domain storage, and it charges a flat price. |
+| End-to-end | `dev/e2e/run.php` | Real FOSSBilling 0.8.7 in Docker, driven through its admin API, against a stateful TLS mock of the OSIR API (117 checks). Fault injection covers lost answers (also on replays), fresh and stored 5xx, and registry auto-renew; `foreign*` domains answer with OSIR's ownership 403. The mock does not model OSIR's per-environment domain storage, and it charges a flat price. |

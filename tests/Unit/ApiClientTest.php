@@ -63,7 +63,7 @@ final class ApiClientTest extends TestCase
 
     public function testUnwrappedDtoWithItsOwnSuccessFieldKeepsItsPayload(): void
     {
-        // e.g. DomainTransferResult: a bare DTO that happens to contain "success": true.
+        // e.g. a transfer result: a bare object that happens to contain "success": true.
         $http = (new ScriptedHttpClient())->json(200, ['success' => true, 'domain' => 'example.com', 'status' => 'PENDING']);
         self::assertSame('PENDING', Fixtures::apiClient($http)->send(ApiRequest::get('/t')->unwrapped())->data['status']);
     }
