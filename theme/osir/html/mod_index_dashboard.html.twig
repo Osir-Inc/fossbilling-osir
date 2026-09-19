@@ -1,0 +1,278 @@
+{% extends request.ajax ? "layout_blank.html.twig" : "layout_default.html.twig" %}
+{% set active_menu = 'dashboard' %}
+
+{% block meta_title %}{{ 'Client Area'|trans }}{% endblock %}
+{% block page_header %}{{ 'Dashboard'|trans }}{% endblock %}
+
+{% block body_class %}dashboard{% endblock %}
+{% block breadcrumbs %}
+    {% if not settings.hide_dashboard_breadcrumb %}
+        <ul class="breadcrumb">
+            <li><a href="{{ '/'|url }}">{{ 'Home'|trans }}</a> <span class="dropdown-divider">/</span></li>
+            <li class="active">{{ 'Dashboard'|trans }}</li>
+        </ul>
+    {% endif %}
+{% endblock %}
+
+{% import "macro_functions.html.twig" as mf %}
+
+{% block content %}
+    {{ render_widgets('client.index.dashboard.content.before') }}
+
+    {% if settings.showcase_enabled %}
+        <div class="alert alert-info" role="alert">
+            <p>{{ (settings.showcase_text ?? '')|markdown_to_html }}</p>
+
+            {% if (settings.showcase_button_url) and (settings.showcase_button_title) %}
+                <a class="btn btn-sm btn-primary btn-large"
+                   href="{{ settings.showcase_button_url }}">{{ settings.showcase_button_title }}</a>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    {% if client %}
+        {% set dashboard = client.index_get_dashboard %}
+        {% set profile = dashboard.profile %}
+
+        {{ render_widgets('client.index.dashboard.client.before', { 'dashboard': dashboard, 'profile': profile }) }}
+
+        {% if dashboard.tickets.on_hold > 0 %}
+            <div class="row">
+                <div class="col-md-12">
+                    {% for ticket in dashboard.recent_tickets %}
+                        {% if ticket.status == 'on_hold' %}
+                            <div class="alert alert-info d-flex justify-content-between" role="alert">
+                                <span>Ticket <strong>#{{ ticket.id }}</strong> was replied to {{ ticket.updated_at|timeago }} {{ 'ago'|trans }}.</span>
+                                <a href='{{ "support/ticket/#{ticket.id}"|url }}'
+                                   class="alert-link">{{ 'Reply'|trans }}</a>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="m-0 pt-1">{{ 'Profile'|trans }}</h6>
+                            <div class="py-2">
+                                <a class="btn btn-sm btn-dark"
+                                   href="{{ 'client/profile'|url }}">{{ 'Update'|trans }}</a>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Client ID'|trans }}</dt>
+                                <dd class="col-sm-8">#{{ profile.id }}</dd>
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Email'|trans }}</dt>
+                                <dd class="col-sm-8">{{ profile.email }}</dd>
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Balance'|trans }}</dt>
+                                {% if profile.currency is not null %}
+                                    <dd class="col-sm-8">{{ profile.balance|format_currency(profile.currency) }}</dd>
+                                {% else %}
+                                    <dd class="col-sm-8">-</dd>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="m-0 pt-1">{{ 'Invoices'|trans }}</h6>
+                            <div class="py-2">
+                                <a class="btn btn-sm btn-dark"
+                                   href="{{ 'invoice'|url }}">{{ 'All Invoices'|trans }}</a>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Total'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.invoices.total }}</dd>
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Paid'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.invoices.paid }}</dd>
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Unpaid'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.invoices.unpaid }}</dd>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="m-0 pt-1">{{ 'Orders'|trans }}</h6>
+                            <div class="py-2">
+                                <a class="btn btn-sm btn-primary order-button"
+                                   href="{{ 'order'|url }}">{{ 'New Order'|trans }}</a>
+                                <a class="btn btn-sm btn-dark"
+                                   href="{{ 'order/service'|url }}">{{ 'All Orders'|trans }}</a>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Total'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.orders.total }}</dd>
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Active'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.orders.active }}</dd>
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Expiring'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.orders.expiring }}</dd>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="m-0 pt-1">{{ 'Tickets'|trans }}</h6>
+                            <div class="py-2">
+                                <a class="btn btn-sm btn-light"
+                                   href="{{ 'support'|url(query: { 'ticket': 1 }) }}">{{ 'New Ticket'|trans }}</a>
+                                <a class="btn btn-sm btn-dark" href="{{ 'support'|url }}">{{ 'All Tickets'|trans }}</a>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Total'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.tickets.total }}</dd>
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'Open'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.tickets.open }}</dd>
+                                <dt class="col-sm-4 text-muted small fw-normal">{{ 'On Hold'|trans }}</dt>
+                                <dd class="col-sm-8">{{ dashboard.tickets.on_hold }}</dd>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header py-3">
+                            <h6 class="m-0 pt-1">{{ 'Recent Orders'|trans }}</h6>
+                        </div>
+                        <div class="card-body p-1">
+                            {% if dashboard.recent_orders %}
+                                <div class="list-group list-group-flush">
+                                    {% for order in dashboard.recent_orders %}
+                                        <a href='{{ "order/service/manage/#{order.id}"|url }}'
+                                           class="list-group-item d-flex justify-content-between align-items-center" aria-current="true">
+                                            <div>
+                                                <div>
+                                                    <span><strong>#{{ order.id }}</strong></span>&nbsp;<span>{{ order.title|truncate(45) }}</span>
+                                                </div>
+                                                <span class="text-secondary small" title="{{ order.updated_at|format_date }}">{{ order.updated_at|timeago }} {{ 'ago'|trans }}</span>
+                                            </div>
+                                            <div>
+                                                {{ mf.status_badge(order.status, 'order') }}
+                                            </div>
+                                        </a>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="d-flex justify-content-center my-2 p-2">
+                                    <span class="m-0">{{ 'No recent orders'|trans }}</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header py-3">
+                            <h6 class="m-0 pt-1">{{ 'Support Tickets'|trans }}</h6>
+                        </div>
+                        <div class="card-body p-1">
+                            {% if dashboard.recent_tickets %}
+                                <div class="list-group list-group-flush">
+                                    {% for ticket in dashboard.recent_tickets %}
+                                        <a href='{{ "support/ticket/#{ticket.id}"|url }}'
+                                           class="list-group-item d-flex justify-content-between align-items-center" aria-current="true">
+                                            <div>
+                                                <div>
+                                                    <span><strong>#{{ ticket.id }}</strong></span>&nbsp;<span>{{ ticket.subject|truncate(45) }}</span>
+                                                </div>
+                                                <span class="text-secondary small" title="{{ ticket.updated_at|format_date }}">{{ ticket.updated_at|timeago }} {{ 'ago'|trans }}</span>
+                                            </div>
+                                            <div>
+                                                {{ mf.status_badge(ticket.status, 'ticket') }}
+                                            </div>
+                                        </a>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="d-flex justify-content-center my-2 p-2">
+                                    <span class="m-0">{{ 'No recent support tickets'|trans }}</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{ render_widgets('client.index.dashboard.client.after', { 'dashboard': dashboard, 'profile': profile }) }}
+    {% else %}
+        {{ render_widgets('client.index.dashboard.guest.before') }}
+
+        {# One action per view: the domain search. Prices come from the TLDs configured in FOSSBilling. #}
+        {% set tlds = guest.servicedomain_tlds({'allow_register': true})|sort((a, b) => a.price_registration <=> b.price_registration) %}
+        {% set currency = guest.cart_get_currency %}
+        <section class="osir-hero">
+            <div class="osir-eyebrow">{{ 'Domain search'|trans }}</div>
+            <h1>{{ 'Find your domain'|trans }}</h1>
+            <p>{{ 'Check a name, then register it in a few steps. Prices are per year.'|trans }}</p>
+            <form class="osir-search" method="get" action="{{ 'order/domain-checker'|url }}">
+                <input class="form-control" id="osir-sld" name="name" aria-label="{{ 'Domain name'|trans }}" placeholder="{{ 'yourname'|trans }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+                <select class="form-select" id="osir-tld" name="tld" aria-label="{{ 'Extension'|trans }}">
+                    {% for tld in tlds %}
+                        <option value="{{ tld.tld }}">{{ tld.tld }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-primary" type="submit">{{ 'Search'|trans }}</button>
+            </form>
+            {% if tlds|length > 0 %}
+                <div class="osir-prices" aria-label="{{ 'Registration prices'|trans }}">
+                    {% for tld in tlds|slice(0, 8) %}
+                        <span class="osir-price">{{ tld.tld }} <b>{{ (tld.price_registration * currency.conversion_rate)|format_currency(currency.code) }}/{{ 'yr'|trans }}</b>{% if tld.min_years > 1 %} · {{ 'min. :years yrs'|trans({':years': tld.min_years}) }}{% endif %}</span>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </section>
+
+        <div class="osir-links">
+            <a class="osir-link" href="{{ 'login'|url }}">
+                <span class="osir-eyebrow">{{ 'Account'|trans }}</span>
+                <strong>{{ 'Log in'|trans }}</strong>
+                <span>{{ 'Manage your domains, invoices and renewals.'|trans }}</span>
+            </a>
+            <a class="osir-link" href="{{ 'signup'|url }}">
+                <span class="osir-eyebrow">{{ 'New here'|trans }}</span>
+                <strong>{{ 'Create an account'|trans }}</strong>
+                <span>{{ 'Needed to register or transfer a domain.'|trans }}</span>
+            </a>
+            <a class="osir-link" href="{{ 'order/domain-checker'|url }}">
+                <span class="osir-eyebrow">{{ 'Transfer'|trans }}</span>
+                <strong>{{ 'Bring a domain'|trans }}</strong>
+                <span>{{ 'Move a domain you own: choose Transfer on the next page and enter its transfer code.'|trans }}</span>
+            </a>
+            {% if guest.support_kb_enabled() %}
+                <a class="osir-link" href="{{ 'support/kb'|url }}">
+                    <span class="osir-eyebrow">{{ 'Help'|trans }}</span>
+                    <strong>{{ 'Knowledge base'|trans }}</strong>
+                    <span>{{ 'Answers to frequent questions.'|trans }}</span>
+                </a>
+            {% endif %}
+        </div>
+
+        {{ render_widgets('client.index.dashboard.guest.after') }}
+    {% endif %}
+
+    {{ render_widgets('client.index.dashboard.content.after') }}
+{% endblock %}

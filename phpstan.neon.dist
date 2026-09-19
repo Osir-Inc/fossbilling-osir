@@ -1,0 +1,29 @@
+includes:
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
+
+parameters:
+    level: max
+    paths:
+        - src
+        - tests
+    # FOSSBilling's own classes (Registrar_*, FOSSBilling\*, Box_*) from the pinned release.
+    scanDirectories:
+        - build/fossbilling-0.8.7/library
+        - build/fossbilling-0.8.7/modules/Order/Entity
+        - build/fossbilling-0.8.7/vendor/gabordemooij/redbean/RedBeanPHP
+        - build/fossbilling-0.8.7/vendor/pimple/pimple/src
+        - build/fossbilling-0.8.7/modules/Servicedomain
+        # The OSIR import module talks to these FOSSBilling modules and libraries.
+        - build/fossbilling-0.8.7/modules/Order
+        - build/fossbilling-0.8.7/modules/Client/Entity
+        - build/fossbilling-0.8.7/modules/Product
+        - build/fossbilling-0.8.7/modules/Currency
+        - build/fossbilling-0.8.7/vendor/symfony/cache-contracts
+        - build/fossbilling-0.8.7/vendor/psr/cache/src
+        - build/fossbilling-0.8.7/vendor/doctrine/orm/src
+        - build/fossbilling-0.8.7/vendor/doctrine/persistence/src
+    stubFiles:
+        - tests/stubs/fossbilling-models.stub
+    bootstrapFiles:
+        - tests/phpstan-bootstrap.php
+    treatPhpDocTypesAsCertain: false

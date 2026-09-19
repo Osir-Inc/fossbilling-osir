@@ -1,0 +1,38 @@
+{
+    "name": "osir/fossbilling-registrar",
+    "description": "OSIR domain registrar adapter for FOSSBilling",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/Osir-Inc/fossbilling-osir",
+    "support": {
+        "security": "https://github.com/Osir-Inc/fossbilling-osir/blob/main/SECURITY.md"
+    },
+    "require": {
+        "php": ">=8.3",
+        "ext-intl": "*",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.5",
+        "phpstan/phpstan": "^2.2",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "symfony/http-client": "^7.4",
+        "friendsofphp/php-cs-fixer": "^3.80"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Osir\\FossBilling\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": { "php": "8.3.0" },
+        "allow-plugins": {}
+    },
+    "scripts": {
+        "test": "phpunit",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "cs": "php-cs-fixer fix --dry-run --diff",
+        "cs-fix": "php-cs-fixer fix"
+    }
+}

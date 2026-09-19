@@ -1,0 +1,12 @@
+{
+  "id": "osir",
+  "type": "mod",
+  "name": "OSIR import",
+  "icon_url": "icon.svg",
+  "description": "Import TLDs with your markup and existing domains from the OSIR registrar. Requires the OSIR registrar adapter.",
+  "homepage_url": "https://github.com/Osir-Inc/fossbilling-osir",
+  "author": "OSIR",
+  "author_url": "https://osir.com",
+  "license": "Apache-2.0",
+  "version": "1.0.0"
+}

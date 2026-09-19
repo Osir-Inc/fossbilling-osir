@@ -1,0 +1,501 @@
+{% extends request.ajax ? 'layout_blank.html.twig' : 'layout_default.html.twig' %}
+
+{% block meta_title %}{{ 'OSIR import'|trans }}{% endblock %}
+
+{% set active_menu = 'system' %}
+
+{% block breadcrumbs %}
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            <a href="{{ '/'|url }}"><svg class="icon"><use href="#home" /></svg></a>
+        </li>
+        <li class="breadcrumb-item"><a href="{{ 'servicedomain'|url }}">{{ 'Domain Management'|trans }}</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ 'OSIR import'|trans }}</li>
+    </ol>
+{% endblock %}
+
+{% block content %}
+<div class="p-3" id="osir-import"
+     data-max-tlds="{{ max_tlds }}"
+     data-max-domains="{{ max_domains }}"
+     data-order-url="{{ 'order/manage'|url }}">
+
+    {% if registrars is empty %}
+        <div class="alert alert-warning mb-0">
+            {{ 'No OSIR registrar is installed. Install and configure it under Domain Management → Registrars first.'|trans }}
+        </div>
+    {% else %}
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label" for="osir-registrar">{{ 'Registrar'|trans }}</label>
+                    <select class="form-select" id="osir-registrar">
+                        {% for r in registrars %}
+                            <option value="{{ r.id }}" data-test-mode="{{ r.test_mode ? '1' : '0' }}">{{ r.name }} (#{{ r.id }}){% if r.test_mode %} — {{ 'Test Mode'|trans }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-8 text-body-secondary small">
+                    {{ 'Everything here only reads from OSIR. Nothing is registered, renewed or charged: TLD import writes prices into FOSSBilling, domain import creates orders for domains that are already registered at OSIR.'|trans }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <a href="#osir-tab-tlds" class="nav-link active" data-bs-toggle="tab" role="tab" aria-selected="true">1 · {{ 'TLDs and prices'|trans }}</a>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <a href="#osir-tab-domains" class="nav-link" data-bs-toggle="tab" role="tab" aria-selected="false">2 · {{ 'Domains'|trans }}</a>
+                </li>
+            </ul>
+        </div>
+        <div class="tab-content">
+
+            {# ---------------------------------------------------------------- step 1 #}
+            <div class="tab-pane fade show active card-body" id="osir-tab-tlds" role="tabpanel">
+                <p class="text-body-secondary">
+                    {{ 'Your cost is OSIR\'s own quote for this account: the registry price plus the ICANN fee and OSIR\'s fee, per year. Your selling price is that cost plus the markup below. FOSSBilling keeps one price per TLD, so first-year promotions are not used.'|trans }}
+                </p>
+                <div class="row g-3 align-items-end mb-3">
+                    <div class="col-sm-3 col-lg-2">
+                        <label class="form-label" for="osir-markup-percent">{{ 'Markup %'|trans }}</label>
+                        <input class="form-control" id="osir-markup-percent" inputmode="decimal" value="20" autocomplete="off">
+                    </div>
+                    <div class="col-sm-3 col-lg-2">
+                        <label class="form-label" for="osir-markup-fixed">{{ 'Plus fixed (USD)'|trans }}</label>
+                        <input class="form-control" id="osir-markup-fixed" inputmode="decimal" value="0.00" autocomplete="off">
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <label class="form-label" for="osir-rounding">{{ 'Rounding'|trans }}</label>
+                        <select class="form-select" id="osir-rounding">
+                            <option value="99">{{ 'Up to .99 (12.10 → 12.99)'|trans }}</option>
+                            <option value="whole">{{ 'Up to a whole amount (12.10 → 13.00)'|trans }}</option>
+                            <option value="none">{{ 'None (exact cents)'|trans }}</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-5">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="osir-update-existing">
+                            <label class="form-check-label" for="osir-update-existing">{{ 'Also re-price TLDs that already use this registrar in FOSSBilling'|trans }}</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                    <button type="button" class="btn btn-outline-primary" id="osir-load-catalog">{{ 'Load OSIR catalog'|trans }}</button>
+                    <input class="form-control w-auto" type="search" id="osir-tld-search" placeholder="{{ 'Search TLD'|trans }}" disabled>
+                    <select class="form-select w-auto" id="osir-tld-filter" disabled>
+                        <option value="all">{{ 'All TLDs'|trans }}</option>
+                        <option value="new">{{ 'Not in FOSSBilling'|trans }}</option>
+                        <option value="mine">{{ 'In FOSSBilling on this registrar'|trans }}</option>
+                    </select>
+                    <button type="button" class="btn btn-link" id="osir-tld-select-shown" disabled>{{ 'Select shown'|trans }}</button>
+                    <button type="button" class="btn btn-link" id="osir-tld-select-none" disabled>{{ 'Clear selection'|trans }}</button>
+                    <span class="text-body-secondary small" id="osir-tld-count"></span>
+                    <span class="ms-auto d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary" id="osir-tld-preview" disabled>{{ 'Preview prices'|trans }}</button>
+                        <button type="button" class="btn btn-primary" id="osir-tld-import" disabled>{{ 'Import selected'|trans }}</button>
+                        <button type="button" class="btn btn-outline-danger d-none" id="osir-tld-stop">{{ 'Stop'|trans }}</button>
+                    </span>
+                </div>
+                <div class="progress mb-3 d-none" id="osir-tld-progress" role="progressbar" aria-label="{{ 'Progress'|trans }}">
+                    <div class="progress-bar" style="width: 0%"></div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="w-1"></th>
+                                <th>{{ 'TLD'|trans }}</th>
+                                <th>{{ 'OSIR list price'|trans }}<div class="small fw-normal text-body-secondary">{{ 'reg · renew · transfer, excl. fees'|trans }}</div></th>
+                                <th>{{ 'In FOSSBilling now'|trans }}</th>
+                                <th>{{ 'Your cost'|trans }}<div class="small fw-normal text-body-secondary">{{ 'incl. fees'|trans }}</div></th>
+                                <th>{{ 'Your price'|trans }}</th>
+                                <th>{{ 'Result'|trans }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="osir-tld-rows">
+                            <tr><td colspan="7" class="text-body-secondary">{{ 'Load the catalog to start.'|trans }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {# ---------------------------------------------------------------- step 2 #}
+            <div class="tab-pane fade card-body" id="osir-tab-domains" role="tabpanel">
+                <div class="alert alert-warning d-none" id="osir-test-mode-note">
+                    {{ 'This registrar is in Test Mode. Domain import is only available in live mode, because OSIR\'s domain list does not say which environment a domain belongs to.'|trans }}
+                </div>
+                <p class="text-body-secondary">
+                    {{ 'Each selected domain becomes an active FOSSBilling order for the chosen client, with the expiry date from OSIR, its nameservers and the registrant contact stored at OSIR. FOSSBilling will invoice the renewal before that date at the TLD\'s renewal price. Import the TLDs in step 1 first.'|trans }}
+                </p>
+                <div class="row g-3 align-items-end mb-3">
+                    <div class="col-md-6 col-lg-4">
+                        <label class="form-label" for="osir-client">{{ 'Client'|trans }}</label>
+                        <select class="form-control autocomplete-selector" id="osir-client"
+                                placeholder="{{ 'Start typing the client name or ID'|trans }}"
+                                data-resturl="/api/admin/client/get_pairs"></select>
+                    </div>
+                    <div class="col-md-6 col-lg-8 d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-primary" id="osir-load-domains">{{ 'Load domains from OSIR'|trans }}</button>
+                        <button type="button" class="btn btn-link" id="osir-domain-select-all" disabled>{{ 'Select all importable'|trans }}</button>
+                        <span class="text-body-secondary small align-self-center" id="osir-domain-count"></span>
+                        <button type="button" class="btn btn-primary ms-auto" id="osir-domain-import" disabled>{{ 'Import selected'|trans }}</button>
+                    </div>
+                </div>
+                <div class="progress mb-3 d-none" id="osir-domain-progress" role="progressbar" aria-label="{{ 'Progress'|trans }}">
+                    <div class="progress-bar" style="width: 0%"></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="w-1"></th>
+                                <th>{{ 'Domain'|trans }}</th>
+                                <th>{{ 'Expires'|trans }}</th>
+                                <th>{{ 'OSIR status'|trans }}</th>
+                                <th>{{ 'FOSSBilling'|trans }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="osir-domain-rows">
+                            <tr><td colspan="5" class="text-body-secondary">{{ 'Load the domains to start.'|trans }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block js %}
+{% if registrars is not empty %}
+<script>
+(() => {
+    'use strict';
+    const root = document.getElementById('osir-import');
+    const $ = (id) => document.getElementById(id);
+    const MAX_TLDS = Number(root.dataset.maxTlds);
+    const MAX_DOMAINS = Number(root.dataset.maxDomains);
+    const T = {
+        confirmTlds: {{ 'Write prices for %d TLD(s) into FOSSBilling?'|trans|json_encode|raw }},
+        confirmReprice: {{ 'Re-pricing also changes the renewal price of every existing order on these TLDs (renewal invoices use the TLD price).'|trans|json_encode|raw }},
+        confirmDomains: {{ 'Create %d active order(s) for the selected client? Nothing is registered or charged at OSIR.'|trans|json_encode|raw }},
+        pickClient: {{ 'Choose a client first.'|trans|json_encode|raw }},
+        selected: {{ '%d selected'|trans|json_encode|raw }},
+        none: {{ 'Not in FOSSBilling'|trans|json_encode|raw }},
+        other: {{ 'other registrar'|trans|json_encode|raw }},
+        estimated: {{ 'The registry price differs from OSIR\'s list price; renewal and transfer are estimated. Check them.'|trans|json_encode|raw }},
+        premium: {{ 'Has premium names (refused at checkout)'|trans|json_encode|raw }},
+        restricted: {{ 'Registration restrictions apply'|trans|json_encode|raw }},
+        order: {{ 'Order'|trans|json_encode|raw }},
+        status: {
+            create: {{ 'will be created'|trans|json_encode|raw }},
+            update: {{ 'will be re-priced (if enabled)'|trans|json_encode|raw }},
+            skip: {{ 'skipped'|trans|json_encode|raw }},
+            created: {{ 'created'|trans|json_encode|raw }},
+            updated: {{ 'updated'|trans|json_encode|raw }},
+            skipped: {{ 'skipped'|trans|json_encode|raw }},
+            failed: {{ 'failed'|trans|json_encode|raw }},
+            imported: {{ 'imported'|trans|json_encode|raw }},
+        },
+    };
+
+    // ------------------------------------------------------------------ helpers
+
+    const el = (tag, attrs = {}, ...children) => {
+        const node = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+            if (k === 'class') node.className = v;
+            else if (k === 'title') node.title = v;
+            else node.setAttribute(k, v);
+        }
+        for (const c of children) {
+            if (c !== null && c !== undefined) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+        }
+        return node;
+    };
+    const prices = (p) => p ? `${p.register} · ${p.renew} · ${p.transfer}` : '—';
+    const registrarId = () => Number($('osir-registrar').value);
+    const testMode = () => $('osir-registrar').selectedOptions[0]?.dataset.testMode === '1';
+    const notify = (msg, type) => (window.FOSSBilling?.ui?.notify ? FOSSBilling.ui.notify(msg, type) : alert(msg));
+
+    const call = (endpoint, params) => new Promise((resolve, reject) => {
+        FOSSBilling.api.makeRequest('POST', FOSSBilling.tools.getBaseURL('admin/osir/' + endpoint), params,
+            resolve, (err) => reject(err), false, 180000);
+    });
+
+    const progress = (id, done, total) => {
+        const bar = $(id);
+        bar.classList.toggle('d-none', total === 0);
+        bar.firstElementChild.style.width = total ? `${Math.round(done / total * 100)}%` : '0%';
+    };
+
+    const busy = (on, ...ids) => ids.forEach((id) => { $(id).disabled = on; });
+
+    const chunks = (list, size) => {
+        const out = [];
+        for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+        return out;
+    };
+
+    const statusBadge = (status, message) => {
+        const cls = { created: 'success', updated: 'success', imported: 'success', failed: 'danger', skipped: 'secondary', skip: 'secondary', create: 'info', update: 'info' }[status] || 'secondary';
+        return el('span', {}, el('span', { class: `badge bg-${cls}-lt` }, T.status[status] || status), message ? el('div', { class: 'small text-body-secondary' }, message) : null);
+    };
+
+    // ------------------------------------------------------------------ step 1: TLDs
+
+    const tld = { rows: new Map(), selected: new Set(), stop: false };
+
+    const markup = () => ({
+        markup_percent: $('osir-markup-percent').value.trim(),
+        markup_fixed: $('osir-markup-fixed').value.trim(),
+        rounding: $('osir-rounding').value,
+    });
+
+    const tldVisible = (row) => {
+        const q = $('osir-tld-search').value.trim().toLowerCase().replace(/^\./, '');
+        const f = $('osir-tld-filter').value;
+        if (q && !row.tld.includes(q) && !row.display.toLowerCase().includes(q)) return false;
+        // A row with a result from this session stays in view, even if importing it moved it out
+        // of the current filter (e.g. "Not in FOSSBilling").
+        if (row.status) return true;
+        if (f === 'new') return row.fossbilling === null;
+        if (f === 'mine') return row.fossbilling !== null && row.fossbilling.same_registrar;
+        return true;
+    };
+
+    const renderTldRow = (row) => {
+        const fb = row.fossbilling;
+        const box = el('input', { type: 'checkbox', class: 'form-check-input', 'aria-label': row.display });
+        box.checked = tld.selected.has(row.tld);
+        const blocked = fb !== null && !fb.same_registrar;
+        box.disabled = blocked;
+        box.addEventListener('change', () => { box.checked ? tld.selected.add(row.tld) : tld.selected.delete(row.tld); countTlds(); });
+
+        const flags = [];
+        if (row.has_premium) flags.push(el('span', { class: 'badge bg-yellow-lt ms-1', title: T.premium }, 'premium'));
+        if (row.has_restrictions) flags.push(el('span', { class: 'badge bg-orange-lt ms-1', title: T.restricted }, 'restricted'));
+        const current = fb === null ? el('span', { class: 'text-body-secondary' }, T.none)
+            : el('span', {}, prices(fb.price), fb.same_registrar ? null : el('div', { class: 'small text-warning' }, `${T.other}: ${fb.registrar}`));
+        const cost = el('span', {}, prices(row.cost), row.estimated ? el('span', { class: 'text-warning ms-1', title: T.estimated }, '⚠') : null);
+        const result = row.status ? statusBadge(row.status, row.message) : (blocked ? statusBadge('skip', `${T.other}: ${fb.registrar}`) : '');
+
+        return el('tr', {},
+            el('td', {}, box),
+            el('td', {}, el('strong', {}, row.display), row.type ? el('span', { class: 'small text-body-secondary ms-1' }, row.type) : null, ...flags),
+            el('td', { class: 'text-nowrap' }, prices(row.list_price)),
+            el('td', { class: 'text-nowrap' }, current),
+            el('td', { class: 'text-nowrap' }, cost),
+            el('td', { class: 'text-nowrap fw-semibold' }, prices(row.price)),
+            el('td', {}, result),
+        );
+    };
+
+    const renderTlds = () => {
+        const body = $('osir-tld-rows');
+        const nodes = [];
+        for (const row of tld.rows.values()) if (tldVisible(row)) nodes.push(renderTldRow(row));
+        body.replaceChildren(...(nodes.length ? nodes : [el('tr', {}, el('td', { colspan: '7', class: 'text-body-secondary' }, '—'))]));
+        countTlds();
+    };
+
+    const countTlds = () => {
+        $('osir-tld-count').textContent = tld.rows.size ? T.selected.replace('%d', tld.selected.size) : '';
+        const idle = $('osir-tld-stop').classList.contains('d-none');
+        $('osir-tld-preview').disabled = !idle || tld.selected.size === 0;
+        $('osir-tld-import').disabled = !idle || tld.selected.size === 0;
+    };
+
+    const loadCatalog = async () => {
+        busy(true, 'osir-load-catalog');
+        try {
+            const rows = await call('tld_catalog', { registrar_id: registrarId(), refresh: tld.rows.size > 0 });
+            tld.rows = new Map(rows.map((r) => [r.tld, r]));
+            tld.selected.clear();
+            ['osir-tld-search', 'osir-tld-filter', 'osir-tld-select-shown', 'osir-tld-select-none'].forEach((id) => { $(id).disabled = false; });
+            renderTlds();
+        } catch (e) {
+            notify(e.message, 'error');
+        } finally {
+            busy(false, 'osir-load-catalog');
+        }
+    };
+
+    const runTlds = async (endpoint, extra) => {
+        const list = [...tld.selected];
+        if (!list.length) return;
+        tld.stop = false;
+        $('osir-tld-stop').classList.remove('d-none');
+        busy(true, 'osir-load-catalog', 'osir-registrar');
+        countTlds();
+        let done = 0;
+        progress('osir-tld-progress', 0, list.length);
+        try {
+            for (const part of chunks(list, MAX_TLDS)) {
+                if (tld.stop) break;
+                try {
+                    const results = await call(endpoint, { registrar_id: registrarId(), tlds: part, ...markup(), ...extra });
+                    for (const r of results) {
+                        const row = tld.rows.get(r.tld);
+                        if (!row) continue;
+                        Object.assign(row, { cost: r.cost ?? row.cost, price: r.price ?? row.price, estimated: r.estimated ?? row.estimated, status: r.status, message: r.message ?? null });
+                        if (r.status === 'created' || r.status === 'updated') {
+                            row.fossbilling = { same_registrar: true, registrar: '', price: r.price };
+                        }
+                    }
+                } catch (e) {
+                    // The whole chunk failed (validation, session, network): stop and say why.
+                    notify(e.message, 'error');
+                    break;
+                }
+                done += part.length;
+                progress('osir-tld-progress', done, list.length);
+                renderTlds();
+            }
+        } finally {
+            $('osir-tld-stop').classList.add('d-none');
+            busy(false, 'osir-load-catalog', 'osir-registrar');
+            countTlds();
+        }
+    };
+
+    $('osir-load-catalog').addEventListener('click', loadCatalog);
+    $('osir-tld-search').addEventListener('input', renderTlds);
+    $('osir-tld-filter').addEventListener('change', renderTlds);
+    $('osir-tld-select-shown').addEventListener('click', () => {
+        for (const row of tld.rows.values()) {
+            if (tldVisible(row) && (row.fossbilling === null || row.fossbilling.same_registrar)) tld.selected.add(row.tld);
+        }
+        renderTlds();
+    });
+    $('osir-tld-select-none').addEventListener('click', () => { tld.selected.clear(); renderTlds(); });
+    $('osir-tld-preview').addEventListener('click', () => runTlds('tld_preview', {}));
+    $('osir-tld-import').addEventListener('click', () => {
+        const reprice = $('osir-update-existing').checked;
+        if (window.confirm(T.confirmTlds.replace('%d', tld.selected.size) + (reprice ? '\n\n' + T.confirmReprice : ''))) {
+            runTlds('tld_import', { update_existing: reprice });
+        }
+    });
+    $('osir-tld-stop').addEventListener('click', () => { tld.stop = true; });
+    ['osir-markup-percent', 'osir-markup-fixed', 'osir-rounding'].forEach((id) => $(id).addEventListener('change', () => {
+        // New markup: previewed prices are stale.
+        for (const row of tld.rows.values()) { row.price = null; if (row.status === 'create' || row.status === 'update' || row.status === 'skip') row.status = null; }
+        renderTlds();
+    }));
+
+    // ------------------------------------------------------------------ step 2: domains
+
+    const dom = { rows: new Map(), selected: new Set() };
+
+    const renderDomains = () => {
+        const orderUrl = root.dataset.orderUrl;
+        const nodes = [...dom.rows.values()].map((row) => {
+            const box = el('input', { type: 'checkbox', class: 'form-check-input', 'aria-label': row.display });
+            box.disabled = !row.importable;
+            box.checked = dom.selected.has(row.domain);
+            box.addEventListener('change', () => { box.checked ? dom.selected.add(row.domain) : dom.selected.delete(row.domain); countDomains(); });
+            let state;
+            if (row.result) {
+                const link = row.result.order_id ? el('a', { href: `${orderUrl}/${encodeURIComponent(row.result.order_id)}` }, `${T.order} #${row.result.order_id}`) : null;
+                state = el('span', {}, statusBadge(row.result.status, row.result.message), link ? el('div', { class: 'small' }, link) : null);
+            } else if (row.order_id) {
+                state = el('a', { href: `${orderUrl}/${encodeURIComponent(row.order_id)}` }, `${T.order} #${row.order_id}`);
+            } else {
+                state = row.reason ? el('span', { class: 'text-body-secondary' }, row.reason) : '';
+            }
+            return el('tr', {},
+                el('td', {}, box),
+                el('td', {}, el('strong', {}, row.display)),
+                el('td', { class: 'text-nowrap' }, row.expires_at ?? '—'),
+                el('td', {}, row.status),
+                el('td', {}, state),
+            );
+        });
+        $('osir-domain-rows').replaceChildren(...(nodes.length ? nodes : [el('tr', {}, el('td', { colspan: '5', class: 'text-body-secondary' }, '—'))]));
+        countDomains();
+    };
+
+    const countDomains = () => {
+        $('osir-domain-count').textContent = dom.rows.size ? T.selected.replace('%d', dom.selected.size) : '';
+        $('osir-domain-import').disabled = dom.selected.size === 0;
+    };
+
+    const loadDomains = async () => {
+        busy(true, 'osir-load-domains');
+        try {
+            const rows = await call('domain_list', { registrar_id: registrarId(), refresh: true });
+            dom.rows = new Map(rows.map((r) => [r.domain, r]));
+            dom.selected.clear();
+            $('osir-domain-select-all').disabled = false;
+            renderDomains();
+        } catch (e) {
+            notify(e.message, 'error');
+        } finally {
+            busy(false, 'osir-load-domains');
+        }
+    };
+
+    const importDomains = async () => {
+        const clientId = Number($('osir-client').value);
+        if (!clientId) { notify(T.pickClient, 'error'); return; }
+        const list = [...dom.selected];
+        if (!list.length || !window.confirm(T.confirmDomains.replace('%d', list.length))) return;
+        busy(true, 'osir-domain-import', 'osir-load-domains', 'osir-registrar');
+        let done = 0;
+        progress('osir-domain-progress', 0, list.length);
+        try {
+            for (const part of chunks(list, MAX_DOMAINS)) {
+                try {
+                    const results = await call('domain_import', { registrar_id: registrarId(), client_id: clientId, domains: part });
+                    for (const r of results) {
+                        const row = dom.rows.get(r.domain);
+                        if (!row) continue;
+                        row.result = r;
+                        if (r.status === 'imported' || r.status === 'skipped') { row.importable = false; dom.selected.delete(r.domain); }
+                    }
+                } catch (e) {
+                    notify(e.message, 'error');
+                    break;
+                }
+                done += part.length;
+                progress('osir-domain-progress', done, list.length);
+                renderDomains();
+            }
+        } finally {
+            busy(false, 'osir-domain-import', 'osir-load-domains', 'osir-registrar');
+            countDomains();
+        }
+    };
+
+    $('osir-load-domains').addEventListener('click', loadDomains);
+    $('osir-domain-import').addEventListener('click', importDomains);
+    $('osir-domain-select-all').addEventListener('click', () => {
+        for (const row of dom.rows.values()) if (row.importable) dom.selected.add(row.domain);
+        renderDomains();
+    });
+
+    const onRegistrar = () => {
+        const test = testMode();
+        $('osir-test-mode-note').classList.toggle('d-none', !test);
+        $('osir-load-domains').disabled = test;
+        tld.rows.clear(); tld.selected.clear(); dom.rows.clear(); dom.selected.clear();
+        $('osir-tld-rows').replaceChildren(); $('osir-domain-rows').replaceChildren();
+        countTlds(); countDomains();
+    };
+    $('osir-registrar').addEventListener('change', onRegistrar);
+    $('osir-test-mode-note').classList.toggle('d-none', !testMode());
+    $('osir-load-domains').disabled = testMode();
+})();
+</script>
+{% endif %}
+{% endblock %}

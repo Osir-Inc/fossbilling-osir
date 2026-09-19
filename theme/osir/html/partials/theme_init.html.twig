@@ -1,0 +1,8 @@
+{# The OSIR theme is light-only until a dark palette is designed (see osir.css). Clears a
+   dark choice stored by the stock Huraga toggle so returning visitors are not stuck in it. #}
+<script>
+    (() => {
+        try { localStorage.removeItem('theme'); } catch (_) { /* localStorage unavailable */ }
+        document.documentElement.setAttribute('data-bs-theme', 'light');
+    })();
+</script>

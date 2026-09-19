@@ -1,0 +1,68 @@
+<?php
+
+// Columns of FOSSBilling's RedBean models used by this repository (RedBean exposes them through
+// __get/__set, which static analysis cannot see). Static analysis only. PHPStan validates stubs on
+// their own, so the parent class is declared here too.
+
+namespace RedBeanPHP {
+    class SimpleModel
+    {
+        public function __get(string $prop): mixed {}
+
+        public function __set(string $prop, mixed $value): void {}
+    }
+}
+
+namespace {
+
+/**
+ * @property int|string|null $id
+ * @property string|null $name
+ * @property string|null $registrar
+ * @property int|string|bool|null $test_mode
+ * @property string|null $config
+ */
+class Model_TldRegistrar extends RedBeanPHP\SimpleModel {}
+
+/**
+ * @property int|string|null $id
+ * @property string|null $tld
+ * @property int|string|null $tld_registrar_id
+ * @property string|float|null $price_registration
+ * @property string|float|null $price_renew
+ * @property string|float|null $price_transfer
+ */
+class Model_Tld extends RedBeanPHP\SimpleModel {}
+
+/**
+ * @property int|string|null $id
+ * @property int|null $client_id
+ * @property int|null $tld_registrar_id
+ * @property string|null $sld
+ * @property string|null $tld
+ * @property string|null $ns1
+ * @property string|null $ns2
+ * @property string|null $ns3
+ * @property string|null $ns4
+ * @property int|null $period
+ * @property bool|int|null $privacy
+ * @property string|null $action
+ * @property string|null $contact_first_name
+ * @property string|null $contact_last_name
+ * @property string|null $contact_email
+ * @property string|null $contact_company
+ * @property string|null $contact_address1
+ * @property string|null $contact_address2
+ * @property string|null $contact_city
+ * @property string|null $contact_state
+ * @property string|null $contact_postcode
+ * @property string|null $contact_country
+ * @property string|null $contact_phone_cc
+ * @property string|null $contact_phone
+ * @property string|null $registered_at
+ * @property string|null $expires_at
+ * @property string|null $created_at
+ * @property string|null $updated_at
+ */
+class Model_ServiceDomain extends RedBeanPHP\SimpleModel {}
+}

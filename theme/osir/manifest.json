@@ -1,0 +1,19 @@
+{
+  "name": "OSIR",
+  "version": "1.0.0",
+  "description": "OSIR client area theme (based on FOSSBilling Huraga)",
+  "icon": "screenshot.jpg",
+  "author": "OSIR",
+  "author_url": "https://osir.com",
+  "markdown_attributes": {
+    "\\League\\CommonMark\\Extension\\Table\\Table": {
+      "class": "table table-hover"
+    },
+    "\\League\\CommonMark\\Extension\\CommonMark\\Node\\Inline\\Image": {
+      "class": "img-fluid"
+    },
+    "\\League\\CommonMark\\Extension\\CommonMark\\Node\\Block\\BlockQuote": {
+      "class": "blockquote"
+    }
+  }
+}

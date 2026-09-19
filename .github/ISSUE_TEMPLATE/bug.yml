@@ -1,0 +1,17 @@
+name: Bug report
+description: Something does not work as documented
+body:
+  - type: markdown
+    attributes:
+      value: "Security problems: do NOT open an issue — see SECURITY.md. Never paste API keys, auth codes or customer data."
+  - type: input
+    id: versions
+    attributes: { label: Versions, description: "Adapter, FOSSBilling and PHP versions" }
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: "Steps, expected vs actual. Include the `Reference:` id from the error if there is one." }
+    validations: { required: true }
+  - type: textarea
+    id: doctor
+    attributes: { label: osir-doctor output, render: text }

@@ -1,0 +1,550 @@
+/*
+ * OSIR client theme for FOSSBilling — design tokens and component styling on top of Huraga.
+ * Source of truth: OSIR Design System Brief (colour, type, shape, components, "do not" list).
+ * Only overrides; the Huraga/Bootstrap build underneath is untouched so FOSSBilling updates apply.
+ */
+
+@font-face {
+    font-family: "Geist";
+    src: url("fonts/Geist-Variable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Geist Mono";
+    src: url("fonts/GeistMono-Variable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* ------------------------------------------------------------------ tokens
+   Light only: the theme forces data-bs-theme="light" (partials/theme_init) until a dark palette is designed. */
+
+:root,
+[data-bs-theme="light"] {
+    --osir-violet-600: #5b52e0;
+    --osir-violet-700: #4a41cf;
+    --osir-violet-50: #f2f0fd;
+    --osir-violet-25: #f9f8ff;
+    --osir-violet-200: #ddd9f7;
+    --osir-ink-900: #15161c;
+    --osir-ink-700: #33353d;
+    --osir-ink-500: #6a6d78;
+    --osir-ink-400: #8b8e9a;
+    --osir-ink-300: #9093a0;
+    --osir-page: #fbfbfd;
+    --osir-ground: #f2f2f6;
+    --osir-surface: #ffffff;
+    --osir-line: #e7e8ee;
+    --osir-line-soft: #f0f0f4;
+    --osir-ok: #23794f;
+    --osir-ok-bg: #f1faf5;
+    --osir-ok-line: #cfe8d9;
+    --osir-warn: #8a5b12;
+    --osir-warn-bg: #fdf7ea;
+    --osir-warn-line: #f0e2c4;
+    --osir-danger: #a2455a;
+    --osir-danger-bg: #fdf3f5;
+    --osir-danger-line: #f0d6dc;
+    --osir-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+    --bs-body-font-family: "Geist", "Helvetica Neue", Arial, sans-serif;
+    --bs-font-monospace: var(--osir-mono);
+    --bs-body-font-size: 14.5px;
+    --bs-body-line-height: 1.6;
+    --bs-body-color: var(--osir-ink-700);
+    --bs-body-color-rgb: 51, 53, 61;
+    --bs-body-bg: var(--osir-page);
+    --bs-emphasis-color: var(--osir-ink-900);
+    --bs-secondary-color: var(--osir-ink-500);
+    --bs-tertiary-bg: #fafafc;
+    --bs-border-color: var(--osir-line);
+    --bs-border-radius: 10px;
+    --bs-border-radius-sm: 8px;
+    --bs-border-radius-lg: 14px;
+    --bs-primary: var(--osir-violet-600);
+    --bs-primary-rgb: 91, 82, 224;
+    --bs-primary-text-emphasis: var(--osir-violet-700);
+    --bs-primary-bg-subtle: var(--osir-violet-50);
+    --bs-primary-border-subtle: var(--osir-violet-200);
+    --bs-link-color: var(--osir-violet-600);
+    --bs-link-color-rgb: 91, 82, 224;
+    --bs-link-hover-color: var(--osir-violet-700);
+    --bs-link-hover-color-rgb: 74, 65, 207;
+    --bs-focus-ring-color: rgba(91, 82, 224, .25);
+    --bs-heading-color: var(--osir-ink-900);
+}
+
+/* ------------------------------------------------------------------ base */
+
+html, body {
+    font-size: var(--bs-body-font-size);
+    line-height: var(--bs-body-line-height);
+    -webkit-font-smoothing: antialiased;
+}
+
+body {
+    font-family: var(--bs-body-font-family);
+    background: var(--bs-body-bg);
+}
+
+h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+    color: var(--bs-heading-color);
+    font-weight: 600;
+    letter-spacing: -.01em;
+}
+
+h1, .h1 { font-size: 30px; letter-spacing: -.03em; }
+h2, .h2 { font-size: 22px; letter-spacing: -.02em; }
+
+code, kbd, pre, samp, .font-monospace, .osir-mono {
+    font-family: var(--osir-mono);
+}
+
+.text-muted, .text-body-secondary { color: var(--bs-secondary-color) !important; }
+
+a { text-underline-offset: 3px; }
+
+/* Mono eyebrow: the system's signature label. Only label-sized headings; real titles stay titles.
+   Colour: ink-500, not the brief's #9093a0, which is 3.1:1 on white and fails WCAG AA at 10.5px. */
+.osir-eyebrow,
+.card-header h5, .card-header h6,
+.card-header.h6,
+.table > thead > tr > th,
+.card-body table > thead > tr > th,
+dl dt.text-muted {
+    font-family: var(--osir-mono);
+    font-size: 10.5px !important;
+    font-weight: 500 !important;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--osir-ink-500) !important;
+}
+
+/* ------------------------------------------------------------------ header */
+
+header .navbar {
+    padding-top: 18px !important;
+    padding-bottom: 18px !important;
+}
+
+header .navbar-brand img, .navbar-brand img { height: 28px; width: auto; }
+
+header .navbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--osir-ink-900);
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: -.02em;
+    text-decoration: none;
+}
+
+.osir-mark {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border-radius: 6px;
+    background: var(--osir-violet-600);
+    display: inline-block;
+    position: relative;
+}
+
+.osir-mark::after {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+}
+
+header .nav-link {
+    color: var(--osir-ink-500);
+    font-weight: 400;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+}
+
+header .nav-link:hover { color: var(--osir-ink-900); }
+
+header .nav-link.active {
+    color: var(--osir-ink-900) !important;
+    font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ surfaces */
+
+.card {
+    --bs-card-bg: var(--osir-surface);
+    --bs-card-border-color: var(--osir-line);
+    --bs-card-border-radius: 14px;
+    --bs-card-inner-border-radius: 13px;
+    --bs-card-cap-bg: var(--osir-surface);
+    --bs-card-cap-padding-y: 13px;
+    --bs-card-cap-padding-x: 18px;
+    --bs-card-spacer-y: 16px;
+    --bs-card-spacer-x: 18px;
+    box-shadow: none;
+}
+
+.card-header {
+    border-bottom-color: var(--osir-line-soft);
+}
+
+.card-footer {
+    background: #fafafc;
+    border-top-color: var(--osir-line-soft);
+}
+
+.list-group {
+    --bs-list-group-border-color: var(--osir-line-soft);
+    --bs-list-group-border-radius: 12px;
+    --bs-list-group-action-hover-bg: #fbfbfe;
+    --bs-list-group-active-bg: var(--osir-violet-25);
+    --bs-list-group-active-color: var(--osir-ink-900);
+    --bs-list-group-active-border-color: var(--osir-violet-200);
+}
+
+.accordion {
+    --bs-accordion-border-color: var(--osir-line);
+    --bs-accordion-border-radius: 14px;
+    --bs-accordion-inner-border-radius: 13px;
+    --bs-accordion-active-bg: var(--osir-violet-25);
+    --bs-accordion-active-color: var(--osir-ink-900);
+    --bs-accordion-btn-focus-box-shadow: 0 0 0 .2rem var(--bs-focus-ring-color);
+}
+
+.modal-content {
+    border: 1px solid var(--osir-line);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px -30px rgba(24, 26, 40, .28);
+}
+
+.dropdown-menu {
+    border-color: var(--osir-line);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px -18px rgba(24, 26, 40, .25);
+}
+
+/* ------------------------------------------------------------------ buttons: violet is action only */
+
+.btn {
+    --bs-btn-font-weight: 500;
+    --bs-btn-border-radius: 9px;
+    --bs-btn-padding-x: 14px;
+    --bs-btn-padding-y: 7px;
+    --bs-btn-font-size: 14px;
+    letter-spacing: -.005em;
+}
+
+.btn-sm {
+    --bs-btn-padding-x: 11px;
+    --bs-btn-padding-y: 5px;
+    --bs-btn-font-size: 13px;
+    --bs-btn-border-radius: 8px;
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--osir-violet-600);
+    --bs-btn-border-color: var(--osir-violet-600);
+    --bs-btn-hover-bg: var(--osir-violet-700);
+    --bs-btn-hover-border-color: var(--osir-violet-700);
+    --bs-btn-active-bg: var(--osir-violet-700);
+    --bs-btn-active-border-color: var(--osir-violet-700);
+    --bs-btn-disabled-bg: var(--osir-violet-600);
+    --bs-btn-disabled-border-color: var(--osir-violet-600);
+    --bs-btn-focus-shadow-rgb: 91, 82, 224;
+}
+
+/* Every non-primary button is a quiet bordered button (no black or grey slabs). */
+.btn-dark, .btn-secondary, .btn-light, .btn-outline-primary, .btn-outline-secondary, .btn-outline-dark, .btn-info {
+    --bs-btn-color: var(--osir-ink-900);
+    --bs-btn-bg: var(--osir-surface);
+    --bs-btn-border-color: var(--osir-line);
+    --bs-btn-hover-color: var(--osir-ink-900);
+    --bs-btn-hover-bg: #f7f7fa;
+    --bs-btn-hover-border-color: #d9dae3;
+    --bs-btn-active-color: var(--osir-ink-900);
+    --bs-btn-active-bg: #f2f2f6;
+    --bs-btn-active-border-color: #d9dae3;
+    --bs-btn-disabled-color: var(--osir-ink-400);
+    --bs-btn-disabled-bg: var(--osir-surface);
+    --bs-btn-disabled-border-color: var(--osir-line);
+    --bs-btn-focus-shadow-rgb: 91, 82, 224;
+}
+
+.btn-danger, .btn-outline-danger {
+    --bs-btn-color: var(--osir-danger);
+    --bs-btn-bg: var(--osir-surface);
+    --bs-btn-border-color: var(--osir-danger-line);
+    --bs-btn-hover-color: var(--osir-danger);
+    --bs-btn-hover-bg: var(--osir-danger-bg);
+    --bs-btn-hover-border-color: var(--osir-danger-line);
+}
+
+.btn-success, .btn-outline-success {
+    --bs-btn-color: var(--osir-ok);
+    --bs-btn-bg: var(--osir-surface);
+    --bs-btn-border-color: var(--osir-ok-line);
+    --bs-btn-hover-color: var(--osir-ok);
+    --bs-btn-hover-bg: var(--osir-ok-bg);
+    --bs-btn-hover-border-color: var(--osir-ok-line);
+}
+
+/* The "back to top" helper is a quiet control, not a second primary action. */
+#back-to-top, .back-to-top, .btn-back-to-top, .osir-to-top {
+    background: var(--osir-surface) !important;
+    color: var(--osir-ink-700) !important;
+    border: 1px solid var(--osir-line) !important;
+    box-shadow: 0 2px 6px rgba(24, 26, 40, .05);
+}
+
+/* ------------------------------------------------------------------ forms */
+
+.form-control, .form-select, .ts-wrapper .ts-control {
+    border-color: var(--osir-line);
+    border-radius: 9px;
+    background-color: var(--osir-surface);
+    color: var(--osir-ink-900);
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--osir-violet-200);
+    box-shadow: 0 0 0 .2rem var(--bs-focus-ring-color);
+}
+
+.form-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--osir-ink-700);
+}
+
+.form-check-input:checked {
+    background-color: var(--osir-violet-600);
+    border-color: var(--osir-violet-600);
+}
+
+.invalid-feedback, .form-text.text-danger { color: var(--osir-danger); }
+
+/* ------------------------------------------------------------------ tables */
+
+.table {
+    --bs-table-bg: var(--osir-surface);
+    --bs-table-border-color: #f5f5f8;
+    --bs-table-hover-bg: #fbfbfe;
+    --bs-table-striped-bg: #fbfbfe;
+    font-size: 13px;
+}
+
+.table > thead > tr > th {
+    background: #fafafc;
+    border-bottom-color: var(--osir-line-soft);
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.table > tbody > tr > td { padding-top: 11px; padding-bottom: 11px; }
+
+.table td a:not(.btn)[href*="/manage/"], .table td a:not(.btn)[href*="/invoice/"] {
+    font-family: var(--osir-mono);
+}
+
+/* ------------------------------------------------------------------ badges and alerts: labelled, tinted */
+
+.badge {
+    font-family: var(--osir-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+}
+
+.badge.bg-success, .badge.text-bg-success, .badge.bg-success-lt { background: var(--osir-ok-bg) !important; color: var(--osir-ok) !important; border-color: var(--osir-ok-line); }
+.badge.bg-warning, .badge.text-bg-warning, .badge.bg-warning-lt { background: var(--osir-warn-bg) !important; color: var(--osir-warn) !important; border-color: var(--osir-warn-line); }
+.badge.bg-danger, .badge.text-bg-danger, .badge.bg-danger-lt { background: var(--osir-danger-bg) !important; color: var(--osir-danger) !important; border-color: var(--osir-danger-line); }
+.badge.bg-info, .badge.text-bg-info, .badge.bg-primary, .badge.text-bg-primary {
+    background: var(--osir-violet-50) !important; color: var(--osir-violet-700) !important; border-color: var(--osir-violet-200);
+}
+.badge.bg-secondary, .badge.text-bg-secondary, .badge.bg-light, .badge.bg-dark {
+    background: #f4f4f8 !important; color: var(--osir-ink-500) !important; border-color: var(--osir-line);
+}
+
+.alert {
+    border-radius: 12px;
+    font-size: 14px;
+    border-width: 1px;
+}
+
+.alert-info, .alert-primary { background: var(--osir-violet-25); border-color: var(--osir-violet-200); color: var(--osir-ink-700); }
+.alert-success { background: var(--osir-ok-bg); border-color: var(--osir-ok-line); color: var(--osir-ok); }
+.alert-warning { background: var(--osir-warn-bg); border-color: var(--osir-warn-line); color: var(--osir-warn); }
+.alert-danger { background: var(--osir-danger-bg); border-color: var(--osir-danger-line); color: var(--osir-danger); }
+.alert h1, .alert h2, .alert h3 { font-size: 18px; letter-spacing: -.01em; color: var(--osir-ink-900); }
+
+/* ------------------------------------------------------------------ navigation bits */
+
+.breadcrumb {
+    font-family: var(--osir-mono);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    --bs-breadcrumb-divider-color: var(--osir-ink-500);
+    --bs-breadcrumb-item-active-color: var(--osir-ink-500);
+}
+
+.breadcrumb a { color: var(--osir-ink-500); text-decoration: none; }
+.breadcrumb a:hover { color: var(--osir-violet-600); }
+
+.nav-tabs {
+    --bs-nav-tabs-border-color: var(--osir-line);
+    --bs-nav-tabs-link-active-color: var(--osir-ink-900);
+    --bs-nav-tabs-link-active-border-color: var(--osir-line) var(--osir-line) var(--osir-surface);
+}
+
+.nav-pills {
+    --bs-nav-pills-link-active-bg: var(--osir-violet-50);
+    --bs-nav-pills-link-active-color: var(--osir-violet-700);
+}
+
+.pagination {
+    --bs-pagination-active-bg: var(--osir-violet-600);
+    --bs-pagination-active-border-color: var(--osir-violet-600);
+    --bs-pagination-border-color: var(--osir-line);
+}
+
+.progress { --bs-progress-height: 5px; --bs-progress-bg: #f0f0f4; --bs-progress-bar-bg: var(--osir-violet-600); }
+
+/* Side menu of the client area: a contained list, active item violet-tinted. */
+#sidebar .list-group-item.active, .client-menu .list-group-item.active, .list-group-item.active {
+    background: var(--osir-violet-25);
+    color: var(--osir-ink-900);
+    border-color: var(--osir-violet-200);
+    font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ login / signup (public layout) */
+
+.page-login .card, .page-signup .card, .page-password-reset .card {
+    border-radius: 16px;
+    box-shadow: 0 10px 30px -26px rgba(24, 26, 40, .6);
+}
+
+.page-login .card h1, .page-signup .card h1, .page-password-reset .card h1 {
+    font-size: 22px !important;
+    letter-spacing: -.02em;
+    text-transform: none;
+    font-family: var(--bs-body-font-family);
+    color: var(--osir-ink-900) !important;
+}
+
+/* ------------------------------------------------------------------ home: domain search */
+
+.osir-hero {
+    background: var(--osir-surface);
+    border: 1px solid var(--osir-line);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 18px;
+}
+
+.osir-hero h1 {
+    font-size: 30px;
+    margin: 6px 0 6px;
+}
+
+.osir-hero p { color: var(--osir-ink-500); margin-bottom: 18px; max-width: 620px; }
+
+.osir-search {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.osir-search .form-control {
+    flex: 1 1 260px;
+    font-family: var(--osir-mono);
+    font-size: 15px;
+    padding: 10px 14px;
+}
+
+.osir-search .form-select {
+    flex: 0 0 130px;
+    font-family: var(--osir-mono);
+}
+
+.osir-search .btn { flex: 0 0 auto; padding: 10px 18px; }
+
+.osir-prices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.osir-price {
+    font-family: var(--osir-mono);
+    font-size: 12px;
+    color: var(--osir-ink-500);
+    border: 1px solid var(--osir-line);
+    border-radius: 20px;
+    padding: 3px 10px;
+    background: #fafafc;
+    text-decoration: none;
+}
+
+.osir-price b { color: var(--osir-ink-900); font-weight: 500; }
+
+.osir-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.osir-link {
+    display: block;
+    background: var(--osir-surface);
+    border: 1px solid var(--osir-line);
+    border-radius: 14px;
+    padding: 14px 18px;
+    color: var(--osir-ink-700);
+    text-decoration: none;
+}
+
+.osir-link:hover { border-color: #d9dae3; background: #fbfbfe; color: var(--osir-ink-900); }
+.osir-link strong { display: block; color: var(--osir-ink-900); font-weight: 600; font-size: 15px; margin: 4px 0 2px; }
+.osir-link span { font-size: 13px; color: var(--osir-ink-500); }
+
+.osir-balance {
+    font-family: var(--osir-mono);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--osir-ink-900);
+    letter-spacing: -.02em;
+}
+
+/* ------------------------------------------------------------------ footer */
+
+#footer {
+    border-top: 1px solid var(--osir-line-soft);
+    padding-top: 16px;
+    margin-top: 24px !important;
+    font-size: 12.5px;
+    color: var(--osir-ink-500) !important;
+}
+
+#footer a { color: var(--osir-ink-500); }
+
+@media (max-width: 576px) {
+    .osir-links { grid-template-columns: 1fr; }
+    .osir-hero { padding: 20px 16px; }
+    .osir-hero h1 { font-size: 24px; }
+    .osir-search .form-select { flex: 1 1 100%; }
+    .osir-search .btn { flex: 1 1 100%; }
+}

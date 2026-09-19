@@ -1,0 +1,118 @@
+# Local development & end-to-end test environment for the OSIR FOSSBilling registrar adapter.
+#
+# Isolation rules (so it can run next to other services on the same machine):
+#   - Own compose project name and own bridge network; nothing joins the host network.
+#   - Only FOSSBilling's web port is published, and only on 127.0.0.1.
+#   - MariaDB and the OSIR mock API are reachable from inside the network only.
+#   - Every service has CPU and memory limits so a runaway test cannot starve the host.
+#
+# Usage: see dev/README.md (`make up`, `make install`, `make e2e`, `make down`).
+name: osir-fossbilling-dev
+
+networks:
+  # Internal: no route to the host or the internet. Everything except FOSSBilling's published port
+  # lives only here, so nothing in the stack can reach other services on the host.
+  osirfb:
+    driver: bridge
+    internal: true
+  # Edge: only for publishing FOSSBilling on 127.0.0.1.
+  osirfb-edge:
+    driver: bridge
+
+volumes:
+  osirfb-db:
+  osirfb-app:
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: "no"
+    environment:
+      MARIADB_DATABASE: fossbilling
+      MARIADB_USER: fossbilling
+      MARIADB_PASSWORD: ${OSIRFB_DB_PASSWORD:?set in dev/.env (make env)}
+      MARIADB_ROOT_PASSWORD: ${OSIRFB_DB_ROOT_PASSWORD:?set in dev/.env (make env)}
+    volumes:
+      - osirfb-db:/var/lib/mysql
+    networks: [osirfb]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 768M, pids: 256 }
+
+  # Mock of the OSIR REST API (be.osir.com), served over TLS by nginx so the adapter's
+  # TLS verification stays ON in tests exactly as in production.
+  mock-osir-app:
+    image: php:8.3-cli
+    restart: "no"
+    working_dir: /mock
+    command: ["php", "-S", "0.0.0.0:8080", "router.php"]
+    volumes:
+      - ./mock-osir:/mock:ro
+      - ./.mock-state:/state
+    networks: [osirfb]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M, pids: 128 }
+
+  mock-osir:
+    image: nginx:1.27-alpine
+    restart: "no"
+    depends_on: [mock-osir-app]
+    volumes:
+      - ./mock-tls/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.certs:/certs:ro
+    networks:
+      osirfb:
+        aliases: [api.osir.test, redirect.osir.test]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M, pids: 64 }
+
+  fossbilling:
+    image: fossbilling/fossbilling:${OSIRFB_FOSSBILLING_VERSION:-0.8.7}
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+      mock-osir: { condition: service_started }
+    ports:
+      - "127.0.0.1:${OSIRFB_HTTP_PORT:-18480}:80"
+    # The adapter is pointed at the TLS mock through constants in config.php (written by
+    # scripts/install-fossbilling.sh), not environment variables: FOSSBilling's cron does not
+    # inherit the container environment, and the e2e suite flips the constants per scenario.
+    volumes:
+      - osirfb-app:/var/www/html
+      - ../src/library/Registrar/Adapter/Osir.php:/var/www/html/library/Registrar/Adapter/Osir.php:ro
+      - ../src/library/Registrar/Adapter/Osir:/var/www/html/library/Registrar/Adapter/Osir:ro
+      - ../src/modules/Osir:/var/www/html/modules/Osir:ro
+      - ./.certs/ca.pem:/certs/ca.pem:ro
+    networks: [osirfb, osirfb-edge]
+    deploy:
+      resources:
+        limits: { cpus: "1.5", memory: 1G, pids: 512 }
+
+  # End-to-end runner (not started by `up`): drives FOSSBilling's admin API against the mock and
+  # asserts on what the adapter actually sent. Mounts the FOSSBilling volume so it can flip the
+  # adapter's server-level constants for the redirect / TLS scenarios.
+  e2e:
+    image: osirfb-php:8.3
+    profiles: [e2e]
+    restart: "no"
+    depends_on: [fossbilling]
+    working_dir: /e2e
+    command: ["php", "run.php"]
+    environment:
+      OSIRFB_DB_PASSWORD: ${OSIRFB_DB_PASSWORD}
+    volumes:
+      - ./e2e:/e2e:ro
+      - ./.admin-api-token:/run/admin-api-token:ro
+      - osirfb-app:/fb
+    networks: [osirfb]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M, pids: 128 }
+

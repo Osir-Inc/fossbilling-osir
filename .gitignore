@@ -1,0 +1,9 @@
+/vendor/
+/build/
+/dist/
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/dev/.env
+/dev/.certs/
+/dev/.mock-state/
+/dev/.admin-api-token

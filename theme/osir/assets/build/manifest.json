@@ -1,0 +1,6 @@
+{
+  "build/huraga.js": "/themes/huraga/assets/build/js/huraga.js",
+  "build/vendor.css": "/themes/huraga/assets/build/css/vendor.css",
+  "build/huraga.css": "/themes/huraga/assets/build/css/huraga.css",
+  "build/symbol/icons-sprite.svg": "/themes/huraga/assets/build/symbol/icons-sprite.svg"
+}
