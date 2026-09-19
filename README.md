@@ -20,6 +20,9 @@ Register, transfer, renew and manage domains through [OSIR](https://osir.com) fr
 | ![OSIR theme: storefront](docs/screenshots/storefront-home.png) | ![OSIR theme: domain management](docs/screenshots/client-domain.png) |
 | Optional OSIR theme: storefront | Optional OSIR theme: a customer's domain |
 
+**Downloads:** the [latest release](https://github.com/Osir-Inc/fossbilling-osir/releases/latest) has two zips under **Assets**: `osir-fossbilling-registrar-<version>.zip`
+(the plugin) and `osir-fossbilling-theme-<version>.zip` (the optional client theme), plus `SHA256SUMS`.
+
 It was built with money safety in mind. A lost network answer, a retried cron run or a second click does not
 register, renew or transfer a domain twice. See [How it keeps your balance safe](#how-it-keeps-your-balance-safe).
 
@@ -37,8 +40,8 @@ The adapter has no Composer dependencies. It uses the Symfony HttpClient that sh
 
 FOSSBilling cannot install domain registrars from its extension directory yet, so installation is manual:
 
-1. Download the release zip and `SHA256SUMS` from the releases page of
-   [this repository](https://github.com/Osir-Inc/fossbilling-osir), and check the zip's SHA-256
+1. Download `osir-fossbilling-registrar-<version>.zip` and `SHA256SUMS` from the
+   [latest release](https://github.com/Osir-Inc/fossbilling-osir/releases/latest) (under **Assets**), and check the zip's SHA-256
    (`sha256sum -c SHA256SUMS --ignore-missing`).
 2. Extract the zip into your FOSSBilling root. It contains only these paths, so it cannot overwrite any
    FOSSBilling file:
@@ -156,7 +159,7 @@ and domain management to import domains.
 
 ## Optional: the OSIR client theme
 
-Each release also has `osir-fossbilling-theme-<version>.zip`, a client-area theme in OSIR's design (a domain search
+Each [release](https://github.com/Osir-Inc/fossbilling-osir/releases/latest) also has `osir-fossbilling-theme-<version>.zip` under **Assets**, a client-area theme in OSIR's design (a domain search
 home page, violet primary actions, Geist fonts). It is independent of the registrar: use it, adapt it, or ignore it.
 See [theme/README.md](theme/README.md).
 

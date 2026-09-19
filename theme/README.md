@@ -8,7 +8,8 @@ It is optional and independent of the registrar plugin: it works with any FOSSBi
 
 ## Install
 
-1. Download `osir-fossbilling-theme-<version>.zip` and `SHA256SUMS` from the releases page, and check the zip:
+1. Download `osir-fossbilling-theme-<version>.zip` and `SHA256SUMS` from the [latest release](https://github.com/Osir-Inc/fossbilling-osir/releases/latest) (under
+   **Assets**), and check the zip:
    `sha256sum -c SHA256SUMS --ignore-missing`.
 2. Extract it in your FOSSBilling root folder. It contains only `themes/osir/`.
 3. Make `themes/osir/assets/` writable by the web server user (for example `chown -R www-data themes/osir/assets`):
