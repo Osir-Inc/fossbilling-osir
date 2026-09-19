@@ -58,7 +58,7 @@ final class Fixtures
         );
     }
 
-    public static function order(string $id = '42', ?int $createdAt = self::NOW - 600, ?int $expiresAt = null): OrderRef
+    public static function order(string $id = '42', ?int $createdAt = self::NOW - 600, ?int $expiresAt = self::NOW + 30 * 86400): OrderRef
     {
         return new OrderRef($id, $createdAt, $expiresAt);
     }

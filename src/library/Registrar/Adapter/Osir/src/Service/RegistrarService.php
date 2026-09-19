@@ -239,6 +239,16 @@ final class RegistrarService
     public function renew(DomainName $domain, int $years, ?int $knownExpiry, ?OrderRef $order): bool
     {
         self::assertYears($years);
+        if ($order !== null && $order->expiresAt === null) {
+            // The retry key is anchored to the ORDER's expiry. Without it the only other anchor is the
+            // domain's expiry, which a sync can move between a lost answer and the retry (FOSSBilling's
+            // cron batch sync does not tell the adapter which order it syncs, so the sync freeze cannot
+            // help there) — and a moved anchor means a second, charged renewal. Refuse instead.
+            throw new RuleException(
+                'Order #:order has no expiry date in FOSSBilling, so a repeated renewal could not be recognised safely. Set the order\'s billing period and expiry date, then renew again.',
+                [':order' => $order->id],
+            );
+        }
         $decision = RenewalPolicy::decide($this->info($domain), $knownExpiry, $years, $domain->unicode());
         if ($decision === RenewalDecision::AlreadyApplied) {
             $this->log->warning(sprintf('%s: OSIR expiry is already %d year(s) past FOSSBilling\'s; treating the renewal as already applied.', $domain, $years));
@@ -261,10 +271,6 @@ final class RegistrarService
         // action, whereas the domain's expiry is overwritten by every sync. A retry after a sync thus
         // still reuses the key and gets the earlier attempt replayed instead of a second renewal.
         $anchor = $order?->expiresAt;
-        if ($order !== null && $anchor === null) {
-            $anchor = $knownExpiry;
-            $this->log->warning(sprintf('%s: FOSSBilling order #%s has no expiry date; the renewal retry key falls back to the domain expiry.', $domain, $order->id));
-        }
 
         $response = $this->sendMoneyCall(
             fn(int $attempt): ApiRequest => ApiRequest::post(

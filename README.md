@@ -189,6 +189,8 @@ Only a 1-year renewal is possible at that point; a longer term can be added afte
 A renewal is refused, with a message for the administrator, when:
 - the domain is already in the redemption period (a restore through OSIR support is needed);
 - FOSSBilling has no expiry date for it (run **Sync** once, then renew).
+- the FOSSBilling order has no expiry date (an order created by hand without a billing period): set its period and
+  expiry date first. Without it, a retried renewal could not be told apart from a new one.
 
 ### Contact changes
 

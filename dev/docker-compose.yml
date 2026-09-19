@@ -107,6 +107,7 @@ services:
     command: ["php", "run.php"]
     environment:
       OSIRFB_DB_PASSWORD: ${OSIRFB_DB_PASSWORD}
+      E2E_ONLY: ${E2E_ONLY:-}
     volumes:
       - ./e2e:/e2e:ro
       - ./.admin-api-token:/run/admin-api-token:ro

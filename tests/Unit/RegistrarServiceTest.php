@@ -450,6 +450,20 @@ final class RegistrarServiceTest extends TestCase
         }
     }
 
+    public function testRefusesRenewalOfAnOrderWithoutExpiryBeforeAnyRequest(): void
+    {
+        // Without the order's expiry the retry key could only be anchored to the domain's expiry, which
+        // FOSSBilling's cron batch sync may move between a lost answer and the retry: a second charge.
+        $http = new ScriptedHttpClient();
+        try {
+            Fixtures::service($http)->renew(self::domain(), 1, Fixtures::NOW + 30 * 86400, Fixtures::order('7', expiresAt: null));
+            self::fail('expected a refusal');
+        } catch (RuleException $e) {
+            self::assertStringContainsString('Order #7 has no expiry date', $e->getMessage());
+        }
+        self::assertCount(0, $http->requests, 'nothing is sent to OSIR');
+    }
+
     public function testRefusesRenewalInRedemption(): void
     {
         $http = (new ScriptedHttpClient())->envelope(200, Fixtures::info(['status' => 'redemptionPeriod']));

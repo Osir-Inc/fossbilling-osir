@@ -41,6 +41,10 @@ $outcomes = [];
 function scenario(string $id, string $title, callable $body, array $requires = []): void
 {
     global $failures, $outcomes;
+    $only = array_filter(explode(',', (string) getenv('E2E_ONLY')));
+    if ($only !== [] && !in_array($id, $only, true)) {
+        return; // E2E_ONLY=1,2,15 runs just those (list prerequisites too)
+    }
     echo "\n\033[1m$id. $title\033[0m\n";
     foreach ($requires as $dep) {
         if (!($outcomes[$dep] ?? false)) {
@@ -164,7 +168,8 @@ function createClient(string $suffix): int
  */
 function orderDomain(int $clientId, array $config): array
 {
-    [$orderId, $error] = fb('order/create', ['client_id' => $clientId, 'product_id' => 1, 'config' => $config, 'invoice_option' => 'no-invoice']);
+    // A 1-year billing period, as checkout orders have: FOSSBilling then gives the order an expiry date.
+    [$orderId, $error] = fb('order/create', ['client_id' => $clientId, 'product_id' => 1, 'config' => $config, 'period' => '1Y', 'invoice_option' => 'no-invoice']);
     if ($error !== null) {
         return [null, $error];
     }
@@ -176,7 +181,7 @@ function orderDomain(int $clientId, array $config): array
 /** Creates an order without activating it (a second, pending order for the same name, …). */
 function createOrder(int $clientId, array $config): int
 {
-    return (int) fbOk('order/create', ['client_id' => $clientId, 'product_id' => 1, 'config' => $config, 'invoice_option' => 'no-invoice']);
+    return (int) fbOk('order/create', ['client_id' => $clientId, 'product_id' => 1, 'config' => $config, 'period' => '1Y', 'invoice_option' => 'no-invoice']);
 }
 
 /** @return list<array<string, mixed>> */
@@ -421,14 +426,34 @@ scenario('15', 'Lost renewal answer, then a sync, then a retry: renewed and char
     check($lost !== null, 'first renewal reported as failed (answer lost)', 'no error');
     check(count(charges("renew $name.com")) === 1, 'OSIR renewed once');
 
+    $pdo = new PDO('mysql:host=db;dbname=fossbilling', 'fossbilling', getenv('OSIRFB_DB_PASSWORD') ?: '');
+    $state = static fn(): string => json_encode($pdo->query('SELECT co.status, co.period, co.expires_at AS order_expires, sd.expires_at AS service_expires FROM client_order co JOIN service_domain sd ON sd.id = co.service_id WHERE co.id = ' . (int) $oid)->fetch(PDO::FETCH_ASSOC));
+    $afterFailure = $state();
+    // FOSSBilling's cron runs its batch expiry sync every few minutes; here it runs right between the lost
+    // answer and the retry. It does not tell the adapter which order it syncs, so it copies OSIR's new
+    // expiry. The retry must still reuse the first key (anchored to the order's own expiry).
+    $pdo->exec("UPDATE setting SET value = '2000-01-01 00:00:00' WHERE param = 'servicedomain_last_sync'");
+    fbOk('servicedomain/batch_sync_expiration_dates');
     fbOk('servicedomain/sync', ['order_id' => (int) $oid]); // FOSSBilling now holds OSIR's new expiry
+    $afterSync = $state();
     [, $retry] = fb('order/renew', ['id' => (int) $oid]);
     check($retry === null, 'retry after the sync succeeds', (string) $retry);
-    check(count(charges("renew $name.com")) === 1, 'still charged exactly once');
+    $keys = array_values(array_unique(array_column(only(requestsSince($mark), 'POST', '#/renew$#'), 'idempotency_key')));
+    check(count(charges("renew $name.com")) === 1, 'still charged exactly once', 'keys ' . json_encode($keys) . ' after failure ' . $afterFailure . ' after sync ' . $afterSync);
     check(mock('state')['domains']["$name.com"]['expires'] === $before + 365 * 86400, 'renewed exactly one year');
     fbOk('servicedomain/sync', ['order_id' => (int) $oid]); // order active again: normal sync
     $svc = serviceOf((int) $oid);
     check(str_starts_with((string) $svc['expires_at'], gmdate('Y-m-d', mock('state')['domains']["$name.com"]['expires'])), 'FOSSBilling expiry matches OSIR once the renewal is resolved', (string) $svc['expires_at']);
+}, ['2']);
+
+scenario('15b', 'An order without an expiry date is never renewed (its retry could not be recognised)', function () use (&$clientId, $suffix): void {
+    [$oid] = orderDomain($clientId, ['action' => 'register', 'register_sld' => "e2e-noexp-$suffix", 'register_tld' => '.com', 'register_years' => 1]);
+    $pdo = new PDO('mysql:host=db;dbname=fossbilling', 'fossbilling', getenv('OSIRFB_DB_PASSWORD') ?: '');
+    $pdo->exec('UPDATE client_order SET expires_at = NULL, period = NULL WHERE id = ' . (int) $oid);
+    $mark = requestCount();
+    [, $error] = fb('order/renew', ['id' => (int) $oid]);
+    check($error !== null && str_contains($error, 'no expiry date'), 'refused with an explanation', (string) $error);
+    check(only(requestsSince($mark), 'POST', '#/renew$#') === [] && charges("renew e2e-noexp-$suffix.com") === [], 'nothing sent, nothing charged');
 }, ['2']);
 
 scenario('16', 'Two orders for the same name: the second is not attached to the first one\'s domain', function () use (&$clientId, $suffix): void {

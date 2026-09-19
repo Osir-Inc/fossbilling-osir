@@ -4,7 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] - 2026-09-19
+## [1.0.1] - 2026-09-19
+
+### Fixed
+- Renewal safety: an order without an expiry date in FOSSBilling is no longer renewed. Its retry key had to fall
+  back to the domain's expiry, which FOSSBilling's cron sync (a separate process) could move between a lost answer
+  and the retry, so a retry could renew and charge a second time. Such an order is now refused with an explanation;
+  checkout orders always have an expiry date.
+
+## [1.0.0] - 2026-09-19 (tagged, not released)
 
 ### Added
 - Registrar adapter for FOSSBilling 0.8.7+: availability, registration, transfer-in, renewal (including
