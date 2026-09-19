@@ -44,6 +44,10 @@
         </div>
     </div>
 
+    <div class="alert alert-warning d-none" id="osir-test-mode-note">
+        {{ 'This registrar is in Test Mode. OSIR has no test environment, so the adapter and this import refuse to work until you turn Test Mode off (Domain Management → Registrars → OSIR).'|trans }}
+    </div>
+
     <div class="card">
         <div class="card-header">
             <ul class="nav nav-tabs card-header-tabs" role="tablist">
@@ -130,9 +134,6 @@
 
             {# ---------------------------------------------------------------- step 2 #}
             <div class="tab-pane fade card-body" id="osir-tab-domains" role="tabpanel">
-                <div class="alert alert-warning d-none" id="osir-test-mode-note">
-                    {{ 'This registrar is in Test Mode. Domain import is only available in live mode, because OSIR\'s domain list does not say which environment a domain belongs to.'|trans }}
-                </div>
                 <p class="text-body-secondary">
                     {{ 'Each selected domain becomes an active FOSSBilling order for the chosen client, with the expiry date from OSIR, its nameservers and the registrant contact stored at OSIR. FOSSBilling will invoice the renewal before that date at the TLD\'s renewal price. Import the TLDs in step 1 first.'|trans }}
                 </p>
@@ -488,6 +489,7 @@
         const test = testMode();
         $('osir-test-mode-note').classList.toggle('d-none', !test);
         $('osir-load-domains').disabled = test;
+        $('osir-load-catalog').disabled = test;
         tld.rows.clear(); tld.selected.clear(); dom.rows.clear(); dom.selected.clear();
         $('osir-tld-rows').replaceChildren(); $('osir-domain-rows').replaceChildren();
         countTlds(); countDomains();
@@ -495,6 +497,7 @@
     $('osir-registrar').addEventListener('change', onRegistrar);
     $('osir-test-mode-note').classList.toggle('d-none', !testMode());
     $('osir-load-domains').disabled = testMode();
+    $('osir-load-catalog').disabled = testMode();
 })();
 </script>
 {% endif %}

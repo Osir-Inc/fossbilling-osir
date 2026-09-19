@@ -12,8 +12,7 @@ use Osir\FossBilling\Domain\DomainName;
  *
  * OSIR scopes a key per (account, endpoint) and keeps the outcome of a keyed request for 30 days.
  * The keys therefore encode everything that makes an operation distinct:
- *   - the environment, because live and sandbox requests come from the same OSIR account and a
- *     sandbox outcome must never answer a live order;
+ *   - the environment (always `live`: OSIR has no sandbox; kept so existing keys stay valid);
  *   - the order id, and for renewals the order's expiry date, so a retry of the SAME action
  *     collapses into one charge while the next renewal gets a new key;
  *   - an attempt number, bumped only when OSIR replays a stored 5xx for the previous key (the

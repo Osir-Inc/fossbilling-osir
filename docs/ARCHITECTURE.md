@@ -52,8 +52,10 @@ pinned, checksum-verified release; there are no hand-written stubs.
 `SettingsResolver` builds an immutable `Settings` object, lazily on the first operation. FOSSBilling calls
 `enableTestMode()` *after* constructing the adapter, so the mode cannot be known earlier.
 
-- The API key comes from `OSIR_REGISTRAR_API_KEY[_TEST]` (a constant, then an environment variable), falling
-  back to the stored setting. It is validated (`osir_(live|test)_…`), and its prefix must match the mode.
+- FOSSBilling's Test Mode is refused: OSIR has no test environment, so resolving settings in Test Mode fails
+  before any request can be sent.
+- The API key comes from `OSIR_REGISTRAR_API_KEY` (a constant, then an environment variable, then `osir.api_key` in
+  FOSSBilling's config array), falling back to the stored setting. It must be a well-formed `osir_live_…` key.
 - The key is held in `Secret`, whose value lives in a static `WeakMap`, not in a property. No dump mechanism
   (`var_dump`, `print_r`, `var_export`, array casts, serialisation) can reach it. The adapter drops its raw
   copy of the settings keys once `Settings` exists.
@@ -93,9 +95,9 @@ Retries (`RetryPolicy`):
 registry state. A keyed request whose answer is a *replayed* success proves that this very order did it.
 
 **Idempotency keys** (`IdempotencyKeys`):
-`fb:<installation>:<live|sandbox>:o<order>:<action>:<domain>[:<extra>][:a<n>]`.
-- The environment is included because live and sandbox requests come from the same OSIR account, and a
-  sandbox outcome must never answer a live order.
+`fb:<installation>:live:o<order>:<action>:<domain>[:<extra>][:a<n>]`.
+- The environment segment is always `live` (OSIR has no test environment); it is kept so the keys of orders in
+  flight stay the same across versions. FOSSBilling's Test Mode is refused before any request (`SettingsResolver`).
 - Renewal keys include the *order's* expiry date, which FOSSBilling moves only after a successful renew
   action. The domain's own expiry is not used, because every sync overwrites it. For orders without an
   expiry (for example orders created through the admin API without a period), the domain expiry is the

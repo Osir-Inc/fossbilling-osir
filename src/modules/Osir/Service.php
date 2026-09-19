@@ -589,9 +589,8 @@ class Service implements InjectionAwareInterface
     private function assertLive(\Model_TldRegistrar $registrar): void
     {
         if ((bool) $registrar->test_mode) {
-            // OSIR's domain list does not say which environment a domain lives in, and in Test
-            // Mode the adapter would send sandbox operations for live domains.
-            throw new InformationException('Domain import is only available when the OSIR registrar is not in Test Mode.');
+            // OSIR has no test environment; the adapter refuses to work while Test Mode is on.
+            throw new InformationException('OSIR has no test environment. Turn off Test Mode for this registrar to use the import.');
         }
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Osir\FossBilling\Tests\Unit;
 
+use Osir\FossBilling\Exception\ConfigurationException;
 use Osir\FossBilling\Tests\Support\CapturingLogger;
 use Osir\FossBilling\Tests\Support\Fixtures;
 use Osir\FossBilling\Tests\Support\ScriptedHttpClient;
@@ -109,9 +110,9 @@ final class AdapterTest extends TestCase
     {
         $config = \Registrar_Adapter_Osir::getConfig();
         self::assertTrue($config['form']['api_key'][1]['secret']);
-        self::assertTrue($config['form']['api_key_test'][1]['secret']);
+        self::assertArrayNotHasKey('api_key_test', $config['form'], 'OSIR has no sandbox: no sandbox key field');
         self::assertSame('password', $config['form']['api_key'][0]);
-        self::assertSame(['api_key', 'api_key_test'], \Registrar_Adapter_Osir::getSecretFields());
+        self::assertSame(['api_key', 'api_key_test'], \Registrar_Adapter_Osir::getSecretFields(), 'a sandbox key stored by 1.0.x stays masked');
         self::assertArrayNotHasKey('api_url', $config['form'], 'the API URL must not be admin-configurable');
     }
 
@@ -132,7 +133,7 @@ final class AdapterTest extends TestCase
             self::assertStringContainsString('not configured correctly', $e->getMessage());
             self::assertStringNotContainsString('osir_live', $e->getMessage());
         }
-        self::assertStringContainsString('No live OSIR API key', $this->logger->all());
+        self::assertStringContainsString('No OSIR API key', $this->logger->all());
     }
 
     public function testAvailability(): void
@@ -151,12 +152,76 @@ final class AdapterTest extends TestCase
         $this->adapter()->isDomainAvailable(self::domain());
     }
 
-    public function testTestModeUsesSandboxKeyAndOte(): void
+    public function testTestModeIsRefusedAndNothingIsSent(): void
     {
-        $this->http->envelope(200, ['locked' => true]);
-        $this->adapter(testMode: true)->lock(self::domain());
-        self::assertSame(Fixtures::TEST_KEY, $this->http->last()->headers['x-api-key']);
-        self::assertSame(['environment' => 'ote1'], $this->http->last()->query());
+        try {
+            $this->adapter(testMode: true)->lock(self::domain());
+            self::fail('expected a refusal');
+        } catch (\Registrar_Exception $e) {
+            self::assertStringContainsString('not configured correctly', $e->getMessage(), 'customers get the generic message');
+        }
+        self::assertStringContainsString('OSIR has no test environment. Turn off Test Mode', $this->logger->all(), 'the administrator log says what to do');
+        self::assertCount(0, $this->http->requests, 'Test Mode never turns into live operations');
+    }
+
+    /** @return iterable<string, array{\Closure(\Registrar_Adapter_Osir, \Registrar_Domain): mixed, bool}> */
+    public static function adapterOperations(): iterable
+    {
+        $operations = [
+            'isDomainAvailable' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->isDomainAvailable($d),
+            'isDomaincanBeTransferred' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->isDomaincanBeTransferred($d),
+            'modifyNs' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->modifyNs($d),
+            'modifyContact' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->modifyContact($d),
+            'transferDomain' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->transferDomain($d),
+            'getDomainDetails' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->getDomainDetails($d),
+            'getEpp' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->getEpp($d),
+            'registerDomain' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->registerDomain($d),
+            'renewDomain' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->renewDomain($d),
+            'enablePrivacyProtection' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->enablePrivacyProtection($d),
+            'disablePrivacyProtection' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->disablePrivacyProtection($d),
+            'lock' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->lock($d),
+            'unlock' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->unlock($d),
+            'deleteDomain' => static fn(\Registrar_Adapter_Osir $a, \Registrar_Domain $d): mixed => $a->deleteDomain($d),
+        ];
+        foreach ($operations as $name => $call) {
+            yield $name => [$call, false];
+            yield "$name (cron)" => [$call, true];
+        }
+    }
+
+    /**
+     * Test Mode must never reach OSIR, from any entry point, in a web request or in cron.
+     *
+     * @param \Closure(\Registrar_Adapter_Osir, \Registrar_Domain): mixed $call
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('adapterOperations')]
+    public function testTestModeSendsNothingFromAnyOperation(\Closure $call, bool $cron): void
+    {
+        try {
+            $call($this->adapter(testMode: true, cron: $cron), self::domain());
+        } catch (\Registrar_Exception) {
+            // refused: expected for every operation that would talk to OSIR
+        }
+        self::assertCount(0, $this->http->requests);
+    }
+
+    public function testTestModeRefusesDiagnosticsAndImportAndKeepsTheReason(): void
+    {
+        $adapter = $this->adapter(testMode: true);
+        $calls = [
+            'diagnostics' => static fn(): mixed => $adapter->diagnostics(),
+            'importService' => static fn(): mixed => $adapter->importService(),
+            'diagnostics again' => static fn(): mixed => $adapter->diagnostics(),
+        ];
+        foreach ($calls as $name => $call) {
+            try {
+                $call();
+                self::fail("$name must refuse");
+            } catch (ConfigurationException $e) {
+                self::assertStringContainsString('no test environment', $e->getMessage(), 'a repeated call reports the real reason, not a missing key');
+            }
+        }
+        self::assertCount(0, $this->http->requests);
     }
 
     public function testRegisterUsesOrderIdForIdempotency(): void

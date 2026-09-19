@@ -51,4 +51,4 @@ Scenarios are driven by domain labels (`taken*`, `premium*`, `outage*`, `mine*`,
 the compose network.
 
 The mock encodes our reading of the OSIR API. Before a release, the manual checklist in `docs/RELEASING.md`
-is run against OSIR's real sandbox (OTE).
+is run against the real OSIR API (there is no OSIR test environment).

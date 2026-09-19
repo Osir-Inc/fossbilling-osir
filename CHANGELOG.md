@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-09-19
+
+### Removed
+- **BREAKING:** sandbox support. OSIR offers no test environment, so the "Sandbox API key" setting is gone and only live keys
+  (`osir_live_…`) are accepted. FOSSBilling's Test Mode is now refused: while it is on, the adapter sends nothing to
+  OSIR and the log explains why, so Test Mode can never turn into live, paid operations by mistake.
+  A sandbox key stored by 1.0.x stays masked and unused; idempotency keys are unchanged.
+
+### Upgrading from 1.0.x
+- If you used Test Mode: before turning it off, cancel or delete domain orders that were created while it was on
+  and are still pending or failed. Activated again with Test Mode off, they would be real, charged registrations.
+- A sandbox key saved in 1.0.x can no longer be edited in the admin panel (the field is gone). It is unused and
+  stays masked; to delete it, remove `api_key_test` from the registrar's stored configuration.
+
 ## [1.0.1] - 2026-09-19
 
 ### Fixed

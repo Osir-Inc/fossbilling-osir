@@ -1,9 +1,10 @@
 # Releasing
 
 1. All green locally: `make check test-all-php up install e2e`.
-2. **Real-OTE check.** The e2e mock encodes our reading of the OSIR contract. Before a release, run the
-   manual checklist below against OSIR's real OTE with a sandbox key. Use a FOSSBilling install with Test
-   Mode on; `make up install` works, with `OSIR_REGISTRAR_API_URL` and the CA constants removed from `config.php`.
+2. **Real-API check.** The e2e mock encodes our reading of the OSIR contract. Before a release, run the manual
+   checklist below against the real OSIR API with a live key on an OSIR test account. OSIR has no test
+   environment, so this costs real money: use the cheapest TLD. `make up install` works, with
+   `OSIR_REGISTRAR_API_URL` and the CA constants removed from `config.php`.
    - [ ] `osir-doctor` passes.
    - [ ] Register a domain, then sync: FOSSBilling's expiry date matches OSIR.
    - [ ] Nameserver change; lock and unlock; privacy on and off; get transfer code.

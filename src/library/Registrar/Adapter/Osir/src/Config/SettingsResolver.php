@@ -10,7 +10,7 @@ use Osir\FossBilling\Exception\ConfigurationException;
  * Turns FOSSBilling's stored registrar settings plus server-level overrides into {@see Settings}.
  *
  * Precedence for the API key (highest first):
- *   1. PHP constant  OSIR_REGISTRAR_API_KEY / OSIR_REGISTRAR_API_KEY_TEST (e.g. in config.php)
+ *   1. PHP constant  OSIR_REGISTRAR_API_KEY (e.g. in config.php)
  *   2. environment   same names (web SAPI only reliably; FOSSBilling's cron may not inherit it)
  *   3. the value saved in FOSSBilling's registrar settings (stored in the database)
  * Options 1 and 2 keep the key out of the database and its backups, which is recommended.
@@ -37,12 +37,11 @@ final class SettingsResolver
      */
     private const array CONFIG_PROPERTIES = [
         'OSIR_REGISTRAR_API_KEY' => 'osir.api_key',
-        'OSIR_REGISTRAR_API_KEY_TEST' => 'osir.api_key_test',
     ];
 
     /**
      * Resolver backed by, in order: PHP constants, environment variables, then FOSSBilling's
-     * configuration array (`'osir' => ['api_key' => …, 'api_key_test' => …]`).
+     * configuration array (`'osir' => ['api_key' => …]`).
      *
      * @param (\Closure(string): mixed)|null $configProperty reads a dotted FOSSBilling config property (tests inject one)
      */
@@ -84,8 +83,13 @@ final class SettingsResolver
      */
     public function resolve(array $config, bool $testMode, string $installationSeed): Settings
     {
-        $environment = $testMode ? Environment::Sandbox : Environment::Live;
-        [$apiKey, $source] = $this->resolveApiKey($config, $environment);
+        if ($testMode) {
+            // OSIR has no sandbox. Refusing here, before any request, means Test Mode can never
+            // silently turn into live, paid operations.
+            throw new ConfigurationException('OSIR has no test environment. Turn off Test Mode for this registrar (Domain Registration → Registrars → OSIR); while it is on, nothing is sent to OSIR.');
+        }
+        $environment = Environment::Live;
+        [$apiKey, $source] = $this->resolveApiKey($config);
 
         return new Settings(
             environment: $environment,
@@ -105,16 +109,12 @@ final class SettingsResolver
      *
      * @return array{0: Secret, 1: string}
      */
-    private function resolveApiKey(array $config, Environment $environment): array
+    private function resolveApiKey(array $config): array
     {
-        $isSandbox = $environment === Environment::Sandbox;
-        $name = $isSandbox ? 'OSIR_REGISTRAR_API_KEY_TEST' : 'OSIR_REGISTRAR_API_KEY';
-        $field = $isSandbox ? 'api_key_test' : 'api_key';
-
-        $value = $this->lookup($name);
+        $value = $this->lookup('OSIR_REGISTRAR_API_KEY');
         $source = 'server';
         if ($value === null || trim($value) === '') {
-            $stored = $config[$field] ?? null;
+            $stored = $config['api_key'] ?? null;
             $value = is_string($stored) ? $stored : null;
             $source = 'settings';
         }
@@ -122,20 +122,16 @@ final class SettingsResolver
         $value = trim((string) $value);
         if ($value === '') {
             throw new ConfigurationException(
-                $isSandbox
-                    ? 'OSIR is in test mode but no sandbox API key (osir_test_…) is configured.'
-                    : 'No live OSIR API key (osir_live_…) is configured.',
+                is_string($config['api_key_test'] ?? null) && $config['api_key_test'] !== ''
+                    ? 'No OSIR API key (osir_live_…) is configured. The sandbox key saved by version 1.0.x is no longer used: OSIR has no test environment.'
+                    : 'No OSIR API key (osir_live_…) is configured.',
             );
         }
         if (preg_match(self::KEY_PATTERN, $value) !== 1) {
             throw new ConfigurationException('The configured OSIR API key is malformed. Copy it again from the OSIR panel.');
         }
-        if (!str_starts_with($value, $environment->keyPrefix())) {
-            throw new ConfigurationException(
-                $isSandbox
-                    ? 'Test mode requires a sandbox key starting with osir_test_. A live key was configured.'
-                    : 'Live mode requires a key starting with osir_live_. A sandbox key was configured.',
-            );
+        if (!str_starts_with($value, Environment::Live->keyPrefix())) {
+            throw new ConfigurationException('Only live OSIR API keys (starting with osir_live_) are supported.');
         }
 
         return [new Secret($value), $source];

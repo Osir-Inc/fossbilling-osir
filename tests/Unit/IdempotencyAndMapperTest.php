@@ -14,13 +14,12 @@ use PHPUnit\Framework\TestCase;
 
 final class IdempotencyAndMapperTest extends TestCase
 {
-    public function testKeysDifferPerEnvironmentActionAndAttempt(): void
+    public function testKeysDifferPerActionAttemptAndAnchor(): void
     {
         $d = DomainName::fromString('example.com');
         $o = new OrderRef('5', null);
         $keys = [
             IdempotencyKeys::register('i', Environment::Live, $o, $d, 1),
-            IdempotencyKeys::register('i', Environment::Sandbox, $o, $d, 1),
             IdempotencyKeys::register('i', Environment::Live, $o, $d, 1, 2),
             IdempotencyKeys::transfer('i', Environment::Live, $o, $d),
             IdempotencyKeys::renew('i', Environment::Live, $o, $d, 1, 1820000000),
@@ -34,8 +33,8 @@ final class IdempotencyAndMapperTest extends TestCase
         $long = DomainName::fromString(str_repeat('a', 63) . '.' . str_repeat('b', 63) . '.com');
         $long2 = DomainName::fromString(str_repeat('a', 63) . '.' . str_repeat('b', 62) . 'c.com');
         $o = new OrderRef('12345678901234567890', null);
-        $k1 = IdempotencyKeys::renew('abc123def456', Environment::Sandbox, $o, $long, 10, 1820000000, 5);
-        $k2 = IdempotencyKeys::renew('abc123def456', Environment::Sandbox, $o, $long2, 10, 1820000000, 5);
+        $k1 = IdempotencyKeys::renew('abc123def456', Environment::Live, $o, $long, 10, 1820000000, 5);
+        $k2 = IdempotencyKeys::renew('abc123def456', Environment::Live, $o, $long2, 10, 1820000000, 5);
         self::assertLessThanOrEqual(255, strlen($k1));
         self::assertNotSame($k1, $k2);
     }

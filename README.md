@@ -6,7 +6,7 @@ Register, transfer, renew and manage domains through [OSIR](https://osir.com) fr
 - Registration, transfer-in and renewal, including renewals paid after the registry has already auto-renewed
 - Nameservers, contacts, transfer lock, WHOIS privacy and transfer (EPP) codes
 - Expiry synchronisation through FOSSBilling's cron
-- Sandbox (OTE) through FOSSBilling's **Test Mode**
+- Refuses to run in FOSSBilling's **Test Mode**: OSIR has no test environment, so nothing is ever sent by mistake
 - `osir-doctor`, a read-only diagnostics command
 - **OSIR import** (System → OSIR import): import OSIR's TLDs with your markup, and turn domains already in your
   OSIR account into FOSSBilling orders
@@ -57,7 +57,8 @@ FOSSBilling cannot install domain registrars from its extension directory yet, s
 
 ### Upgrading
 
-Replace the adapter paths and `modules/Osir` with the new release's files. Settings are stored by FOSSBilling and are kept. Read
+Replace the adapter paths and `modules/Osir` with the new release's files. Coming from 1.0.x with Test Mode in use?
+Read the upgrade notes for 1.1.0 in `CHANGELOG.md` first. Settings are stored by FOSSBilling and are kept. Read
 `CHANGELOG.md` for anything that needs attention, then run `osir-doctor`.
 
 ### Uninstalling
@@ -71,14 +72,12 @@ remove the `osir` entry (or `OSIR_REGISTRAR_*` lines) from `config.php` if you a
 
 ### API keys
 
-Create API keys in the OSIR panel:
+Create an API key in the OSIR panel. It starts with `osir_live_`. OSIR has no test environment, so there are no
+test keys: every operation is real and charged to your OSIR balance.
 
-- a **live** key (`osir_live_…`) for normal operation;
-- optionally, a **sandbox** key (`osir_test_…`) for Test Mode.
+Ask OSIR to restrict the key to your FOSSBilling server's IP address.
 
-Ask OSIR to restrict each key to your FOSSBilling server's IP address.
-
-**Recommended: keep the keys out of the FOSSBilling database.** FOSSBilling's `config.php` returns an array;
+**Recommended: keep the key out of the FOSSBilling database.** FOSSBilling's `config.php` returns an array;
 add an `osir` entry to it:
 
 ```php
@@ -86,34 +85,29 @@ return [
     // … FOSSBilling's own settings …
     'osir' => [
         'api_key' => 'osir_live_…',
-        'api_key_test' => 'osir_test_…',   // optional, for Test Mode
     ],
 ];
 ```
 
-Keys set this way:
+A key set this way:
 - take precedence over the admin-panel fields;
 - are not included in database backups;
 - survive FOSSBilling rewriting `config.php`: updates and some admin settings regenerate the file from its array.
 
-Constants (`define('OSIR_REGISTRAR_API_KEY', …)` / `OSIR_REGISTRAR_API_KEY_TEST`) and environment variables with
-those names also work and take precedence, but a `define()` added to `config.php` is lost the next time FOSSBilling
+A constant (`define('OSIR_REGISTRAR_API_KEY', …)`) or an environment variable with that name also works and take precedence, but a `define()` added to `config.php` is lost the next time FOSSBilling
 rewrites the file, and FOSSBilling's cron does not always inherit the web server environment. After every FOSSBilling
-update, run `osir-doctor`: it shows where the key comes from. Alternatively, paste the keys into the registrar's
-settings: FOSSBilling 0.8.7 stores them in its database and never shows them again ("Configured" badge).
+update, run `osir-doctor`: it shows where the key comes from. Alternatively, paste the key into the registrar's
+settings: FOSSBilling 0.8.7 stores it in its database and never shows it again ("Configured" badge).
 
 ### Settings
 
 | Setting | Meaning |
 |---|---|
-| Live API key / Sandbox API key | See above. A live key works only outside Test Mode, and a sandbox key only in Test Mode. The adapter refuses a mismatch. |
+| API key | See above. Only live keys (`osir_live_…`) are accepted. |
 | Maximum cost per year (USD) | Optional safety limit. Before registering, renewing or transferring, the adapter asks OSIR for the price, including all fees. If the price per year is higher than this limit, or cannot be determined, nothing is charged and the order is left for an administrator. |
 | Create DNS zone at OSIR | `Yes` only if your domains use OSIR's nameservers. |
 | Debug logging | Logs every OSIR request: method, path, status, duration and a reference id. Request bodies and successful response bodies are never logged. Turn it off when you are not troubleshooting. |
-| Test Mode (FOSSBilling's own switch) | Uses the sandbox key and sends OSIR's sandbox (OTE) environment with every registration, renewal, transfer, domain lookup, nameserver change and lock change. Availability checks and price quotes are always answered from OSIR's live data. |
-
-> **Sandbox billing:** confirm with OSIR how sandbox (OTE) operations are billed on your account before
-> testing at scale.
+| Test Mode (FOSSBilling's own switch) | Keep it **off**. OSIR has no test environment, so while Test Mode is on the adapter refuses every operation and sends nothing to OSIR; the log says why (one line per refused action, including every customer domain search and every domain in each cron sync). To try the plugin, register one inexpensive domain for yourself. |
 
 The API endpoint (`https://be.osir.com`) is deliberately **not** an admin setting, so someone with access to
 your admin panel cannot redirect your API key to another server. Two server-level constants exist for OSIR
@@ -155,8 +149,7 @@ Renew it at OSIR first. Import the TLDs first. For TLDs with a minimum renewal p
 order renews for that period. Re-pricing a TLD also changes the renewal price of its existing orders.
 
 TLD import needs USD as FOSSBilling's default currency, because OSIR's prices are in USD.
-Domain import is not available in Test Mode, because OSIR's domain list does not say which environment a
-domain belongs to.
+Like everything else, the import does not work while Test Mode is on.
 
 The module needs the **Use the OSIR import** staff permission, plus **Manage TLDs** to import TLDs, and order
 and domain management to import domains.

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Osir\FossBilling\Tests\Unit;
 
-use Osir\FossBilling\Config\Environment;
 use Osir\FossBilling\Domain\DomainName;
 use Osir\FossBilling\Domain\Nameservers;
 use Osir\FossBilling\Exception\ApiErrorKind;
@@ -105,15 +104,15 @@ final class RegistrarServiceTest extends TestCase
         self::assertSame('fb:abc123def456:live:example.com', $r->json['registrant']['externalId'], 'one OSIR contact per domain and environment');
     }
 
-    public function testSandboxUsesOteAndSeparateKeys(): void
+    public function testStateChangingCallsNameTheProductionEnvironmentExplicitly(): void
     {
+        // OSIR has no sandbox; the key format keeps its `live` segment so keys of existing orders stay valid.
         $http = (new ScriptedHttpClient())->json(200, self::available())->envelope(201, ['status' => 'COMPLETED']);
-        Fixtures::service($http, Fixtures::settings(Environment::Sandbox))->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order('42'));
+        Fixtures::service($http)->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order('42'));
         $r = $http->last();
         self::assertNotNull($r->json);
-        self::assertSame('ote1', $r->json['environment']);
-        self::assertSame(Fixtures::TEST_KEY, $r->headers['x-api-key']);
-        self::assertSame('fb:abc123def456:sandbox:o42:register:example.com:1y', $r->headers['idempotency-key'], 'a sandbox success must never be replayed for the live order');
+        self::assertSame('prod', $r->json['environment']);
+        self::assertSame('fb:abc123def456:live:o42:register:example.com:1y', $r->headers['idempotency-key']);
     }
 
     public function testIncompleteContactStopsRegistrationBeforeAnyRequest(): void
@@ -217,17 +216,6 @@ final class RegistrarServiceTest extends TestCase
         Fixtures::service($http)->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order());
     }
 
-    public function testSandboxRetryIsRecoveredThroughTheStore(): void
-    {
-        // In sandbox the availability pre-check is answered from production ("available"); the
-        // keyed request is what finds this order's earlier OTE registration.
-        $http = (new ScriptedHttpClient())
-            ->json(200, self::available())
-            ->envelope(201, ['status' => 'COMPLETED'], ['idempotent-replay' => 'true']);
-        self::assertFalse(Fixtures::service($http, Fixtures::settings(Environment::Sandbox))->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order()));
-        self::assertStringContainsString(':sandbox:', $http->last()->headers['idempotency-key']);
-    }
-
     public function testLocalDuplicateWithoutReplayIsNotAdopted(): void
     {
         $http = (new ScriptedHttpClient())
@@ -236,7 +224,7 @@ final class RegistrarServiceTest extends TestCase
             ->envelope(200, Fixtures::info());
         $this->expectException(RuleException::class);
         $this->expectExceptionMessage('was not registered by this order');
-        Fixtures::service($http, Fixtures::settings(Environment::Sandbox))->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order());
+        Fixtures::service($http)->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order());
     }
 
     public function testReplayUnavailableFallsBackToTheCreationDate(): void
@@ -698,10 +686,10 @@ final class RegistrarServiceTest extends TestCase
     public function testLockAndPrivacySendEmptyJsonObjects(): void
     {
         $http = (new ScriptedHttpClient())->envelope(200, ['locked' => true])->envelope(200, ['locked' => false])->envelope(200, ['privacy' => false]);
-        $service = Fixtures::service($http, Fixtures::settings(Environment::Sandbox));
+        $service = Fixtures::service($http);
         $service->setTransferLock(self::domain(), true);
         self::assertSame('/v2/domains/example.com/lock', $http->requests[0]->path());
-        self::assertSame(['environment' => 'ote1'], $http->requests[0]->query());
+        self::assertSame(['environment' => 'prod'], $http->requests[0]->query());
         self::assertSame('{}', $http->requests[0]->options['body']);
         $service->setTransferLock(self::domain(), false);
         self::assertSame('/v2/domains/example.com/unlock', $http->requests[1]->path());

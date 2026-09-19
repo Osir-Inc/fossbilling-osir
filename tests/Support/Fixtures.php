@@ -17,6 +17,7 @@ use Osir\FossBilling\Support\SafeLogger;
 final class Fixtures
 {
     public const string LIVE_KEY = 'osir_live_AbCdEfGhIjKlMnOpQrStUvWxYz012345';
+    /** A key of the old sandbox kind: never accepted, used to test refusals and log redaction. */
     public const string TEST_KEY = 'osir_test_AbCdEfGhIjKlMnOpQrStUvWxYz012345';
     public const int NOW = 1789812000; // 2026-09-19T10:00:00Z
 
@@ -24,7 +25,7 @@ final class Fixtures
     {
         return new Settings(
             environment: $env,
-            apiKey: new Secret($env === Environment::Live ? self::LIVE_KEY : self::TEST_KEY),
+            apiKey: new Secret(self::LIVE_KEY),
             baseUrl: 'https://be.osir.com',
             caFile: null,
             installationId: 'abc123def456',

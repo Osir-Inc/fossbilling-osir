@@ -33,12 +33,12 @@ final class SettingsResolverTest extends TestCase
         self::assertMatchesRegularExpression('/^[0-9a-f]{12}$/', $s->installationId);
     }
 
-    public function testTestModeUsesSandboxKey(): void
+    public function testTestModeIsRefusedWhateverKeysExist(): void
     {
-        $s = self::resolver()->resolve(['api_key' => Fixtures::LIVE_KEY, 'api_key_test' => Fixtures::TEST_KEY], true, 'x');
-        self::assertSame(Environment::Sandbox, $s->environment);
-        self::assertSame(Fixtures::TEST_KEY, $s->apiKey->reveal());
-        self::assertSame('ote1', $s->environment->apiValue());
+        // OSIR has no sandbox: Test Mode must never quietly become live, paid operations.
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessage('OSIR has no test environment');
+        self::resolver(['OSIR_REGISTRAR_API_KEY' => Fixtures::LIVE_KEY])->resolve(['api_key' => Fixtures::LIVE_KEY, 'api_key_test' => Fixtures::TEST_KEY], true, 'x');
     }
 
     public function testServerLevelKeyWinsOverDatabase(): void
@@ -61,10 +61,9 @@ final class SettingsResolverTest extends TestCase
     /** @return iterable<string, array{array<string, mixed>, bool, string}> */
     public static function badKeys(): iterable
     {
-        yield 'missing live key' => [[], false, 'No live OSIR API key'];
-        yield 'missing sandbox key' => [['api_key' => Fixtures::LIVE_KEY], true, 'no sandbox API key'];
-        yield 'test key in live mode' => [['api_key' => Fixtures::TEST_KEY], false, 'Live mode requires'];
-        yield 'live key in test mode' => [['api_key_test' => Fixtures::LIVE_KEY], true, 'Test mode requires'];
+        yield 'missing key' => [[], false, 'No OSIR API key'];
+        yield 'old sandbox key' => [['api_key' => Fixtures::TEST_KEY], false, 'Only live OSIR API keys'];
+        yield 'test mode' => [['api_key' => Fixtures::LIVE_KEY], true, 'no test environment'];
         yield 'malformed' => [['api_key' => 'osir_live_short'], false, 'malformed'];
         yield 'header injection' => [['api_key' => Fixtures::LIVE_KEY . "\r\nX-Evil: 1"], false, 'malformed'];
         yield 'JWT pasted' => [['api_key' => 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.e30.x'], false, 'malformed'];
@@ -143,15 +142,12 @@ final class SettingsResolverTest extends TestCase
     {
         $config = static fn(string $path): mixed => match ($path) {
             'osir.api_key' => 'osir_live_FromConfigArray0123456789',
-            'osir.api_key_test' => 'osir_test_FromConfigArray0123456789',
             default => null,
         };
         $live = SettingsResolver::fromRuntime($config)->resolve(['api_key' => 'osir_live_StoredInDatabase012345678'], false, 'seed');
         self::assertSame('server', $live->source, 'the config array wins over the database, like a define()');
         self::assertStringStartsWith('osir_live_Fr', $live->apiKey->hint());
 
-        $sandbox = SettingsResolver::fromRuntime($config)->resolve([], true, 'seed');
-        self::assertSame('server', $sandbox->source);
     }
 
     public function testMissingOrNonStringConfigArrayEntryFallsBackToTheDatabase(): void

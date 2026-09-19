@@ -46,6 +46,10 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
     private const int EXPIRY_JUMP_SECONDS = 180 * 86400;
 
     /** Settings fields that hold credentials; dropped from memory once the service is built. */
+    /**
+     * `api_key_test` is no longer a setting (OSIR has no sandbox), but an earlier version stored it:
+     * it stays declared secret so such a stored value is still masked and dropped from memory.
+     */
     private const array SECRET_FIELDS = ['api_key', 'api_key_test'];
 
     /** @var array<array-key, mixed> */
@@ -54,6 +58,7 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
     private ?RegistrarService $service = null;
     private ?Settings $settings = null;
     private ?SafeLogger $safeLog = null;
+    private ?ConfigurationException $configurationError = null;
 
     /**
      * FOSSBilling constructs the adapter before calling enableTestMode(), so nothing that depends
@@ -72,19 +77,13 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
     public static function getConfig(): array
     {
         return [
-            'label' => 'Registers and manages domains through OSIR (osir.com). Create API keys in the OSIR panel under API keys. '
-                . 'Test Mode uses the OSIR sandbox (OTE) with an osir_test_ key. For better security, keep the keys out of the database: '
-                . 'add define() lines at the top of config.php instead (see the adapter documentation).',
+            'label' => 'Registers and manages domains through OSIR (osir.com). Create an API key in the OSIR panel under API keys. '
+                . 'OSIR has no test environment: keep Test Mode off. For better security, keep the key out of the database: '
+                . "add 'osir' => ['api_key' => '…'] to config.php instead (see the adapter documentation).",
             'form' => [
                 'api_key' => ['password', [
-                    'label' => 'Live API key',
-                    'description' => 'Starts with `osir_live_`. Leave empty if `OSIR_REGISTRAR_API_KEY` is defined in config.php.',
-                    'required' => false,
-                    'secret' => true,
-                ]],
-                'api_key_test' => ['password', [
-                    'label' => 'Sandbox API key',
-                    'description' => 'Starts with `osir_test_`. Used only while Test Mode is on. Leave empty if `OSIR_REGISTRAR_API_KEY_TEST` is defined in config.php.',
+                    'label' => 'API key',
+                    'description' => 'Starts with `osir_live_`. Leave empty if the key is set in config.php.',
                     'required' => false,
                     'secret' => true,
                 ]],
@@ -313,11 +312,19 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
      */
     protected function service(): RegistrarService
     {
+        if ($this->configurationError !== null) {
+            throw $this->configurationError; // the raw keys are gone; repeat the real reason, not "no key"
+        }
         if ($this->service === null) {
-            $settings = SettingsResolver::fromRuntime()->resolve($this->options, (bool) $this->_testMode, self::installationSeed());
-            // The key now lives only inside Settings (as a Secret); drop the raw copies.
-            foreach (self::SECRET_FIELDS as $field) {
-                unset($this->options[$field]);
+            try {
+                $settings = SettingsResolver::fromRuntime()->resolve($this->options, (bool) $this->_testMode, self::installationSeed());
+            } catch (ConfigurationException $e) {
+                throw $this->configurationError = $e;
+            } finally {
+                // The key now lives only inside Settings (as a Secret), or nowhere; drop the raw copies.
+                foreach (self::SECRET_FIELDS as $field) {
+                    unset($this->options[$field]);
+                }
             }
             $this->safeLog = new SafeLogger($this->getLog(), $settings->debug);
             $api = new ApiClient($this->getHttpClient(), $settings, $this->safeLog, RetryPolicy::forCurrentSapi());

@@ -40,7 +40,6 @@ declare(strict_types=1);
 
 const KEYS = [
     'osir_live_E2eLiveKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' => 'cust-e2e',
-    'osir_test_E2eTestKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' => 'cust-e2e',
 ];
 const STATE_FILE = '/state/db.json';
 const LOG_FILE = '/state/requests.jsonl';
@@ -124,7 +123,7 @@ $logEntry = [
     'path' => $path,
     'query' => $query,
     'body' => $body,
-    'key' => $apiKey === null ? 'none' : ($customer !== null ? (str_starts_with($apiKey, 'osir_test_') ? 'valid-test' : 'valid-live') : 'invalid'),
+    'key' => $apiKey === null ? 'none' : ($customer !== null ? 'valid' : 'invalid'),
     'idempotency_key' => $headers['idempotency-key'] ?? null,
     'request_id' => $headers['x-request-id'] ?? null,
     'user_agent' => $headers['user-agent'] ?? null,

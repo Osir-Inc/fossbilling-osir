@@ -13,7 +13,8 @@ declare(strict_types=1);
 const FB = 'http://fossbilling';
 const MOCK = 'http://mock-osir-app:8080';
 const LIVE_KEY = 'osir_live_E2eLiveKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-const TEST_KEY = 'osir_test_E2eTestKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+/** A sandbox key as 1.0.x could store it; 1.1 never uses it and must keep it masked. */
+const OLD_SANDBOX_KEY = 'osir_test_E2eOldSandboxKeyAAAAAAAAAAAAAAAAAAAAAA';
 const CONFIG_PHP = '/fb/config.php';
 
 $token = trim((string) file_get_contents('/run/admin-api-token'));
@@ -221,7 +222,7 @@ scenario('1', 'Install and configure the registrar; secrets are masked', functio
     }
     check($registrarId > 0, 'Osir registrar is installed');
     fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'title' => 'OSIR', 'test_mode' => 0, 'config' => [
-        'api_key' => LIVE_KEY, 'api_key_test' => TEST_KEY, 'max_yearly_cost' => '', 'initialize_dns_zone' => '0', 'debug_logging' => '1',
+        'api_key' => LIVE_KEY, 'max_yearly_cost' => '', 'initialize_dns_zone' => '0', 'debug_logging' => '1',
     ]]);
     $r = fbOk('servicedomain/registrar_get', ['id' => $registrarId]);
     check(array_key_exists('api_key', $r['config']) && $r['config']['api_key'] === null && ($r['config']['api_key_set'] ?? false) === true, 'live key is stored but never returned by the admin API');
@@ -254,7 +255,7 @@ scenario('2', 'Register a domain end to end', function () use (&$clientId, &$ord
     check(($body['nameservers'] ?? []) === ['ns1.e2e-dns.test', 'ns2.e2e-dns.test'], 'default nameservers sent');
     check(($body['registrant']['phone'] ?? '') === '+44.2079460000' && ($body['registrant']['country'] ?? '') === 'GB', 'registrant normalised (+CC.NNNN, ISO country)');
     check(preg_match("#^fb:[0-9a-f]{12}:live:o$orderId:register:$domain\\.com:1y$#", (string) $register[0]['idempotency_key']) === 1, 'idempotency key bound to environment and order', (string) $register[0]['idempotency_key']);
-    check($register[0]['key'] === 'valid-live' && $register[0]['authorization_header_present'] === false, 'live key sent in X-API-Key only');
+    check($register[0]['key'] === 'valid' && $register[0]['authorization_header_present'] === false, 'live key sent in X-API-Key only');
     check(str_starts_with((string) $register[0]['user_agent'], 'OSIR-FOSSBilling/'), 'identifying User-Agent');
 
     $state = mock('state');
@@ -366,19 +367,34 @@ scenario('8', 'Transfers: happy path, pending sync, wrong auth code', function (
     check($bad !== null && str_contains($bad, 'transfer code') && !str_contains($bad, 'credentials'), 'wrong auth code reported as such (not as bad API key)', (string) $bad);
 }, ['2']);
 
-scenario('9', 'Test mode uses the sandbox key and OTE', function () use (&$registrarId, &$orderId, &$clientId, $suffix): void {
-    fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'test_mode' => 1]);
-    $mark = requestCount();
-    [, $error] = fb('servicedomain/lock', ['order_id' => $orderId]);
-    $req = only(requestsSince($mark), 'POST', '#/lock$#')[0] ?? null;
-    check($req !== null && $req['key'] === 'valid-test' && ($req['query']['environment'] ?? '') === 'ote1', 'lock: sandbox key + environment=ote1', (string) $error);
+scenario('9', 'Test Mode is refused: OSIR has no test environment, and nothing is sent', function () use (&$registrarId, &$orderId, &$clientId, $suffix): void {
+    // A sandbox key stored by 1.0.x (its form field is gone) stays masked by the admin API.
+    fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['api_key_test' => OLD_SANDBOX_KEY]]);
+    $r = fbOk('servicedomain/registrar_get', ['id' => $registrarId]);
+    check(array_key_exists('api_key_test', $r['config']) && $r['config']['api_key_test'] === null && ($r['config']['api_key_test_set'] ?? false) === true, 'a sandbox key stored by 1.0.x stays masked');
+    check(!str_contains(json_encode($r), 'E2eOldSandbox'), 'no trace of it in the registrar API response');
 
-    $mark = requestCount();
-    [, $regError] = orderDomain($clientId, ['action' => 'register', 'register_sld' => "e2e-ote-$suffix", 'register_tld' => '.com', 'register_years' => 1]);
-    $reg = only(requestsSince($mark), 'POST', '#^/v2/domains/register$#')[0] ?? null;
-    check($regError === null && $reg !== null && $reg['key'] === 'valid-test' && ($reg['body']['environment'] ?? '') === 'ote1', 'registration: sandbox key + environment=ote1', (string) $regError);
-    check($reg !== null && str_contains((string) $reg['idempotency_key'], ':sandbox:'), 'sandbox idempotency key (never replayed for live)');
-    fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'test_mode' => 0]);
+    $pending = createOrder($clientId, ['action' => 'register', 'register_sld' => "e2e-ote-$suffix", 'register_tld' => '.com', 'register_years' => 1]);
+    fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'test_mode' => 1]);
+    try {
+        $mark = requestCount();
+        [, $activate] = fb('order/activate', ['id' => $pending]);
+        [, $renew] = fb('order/renew', ['id' => (int) $orderId]);
+        [, $lock] = fb('servicedomain/lock', ['order_id' => $orderId]);
+        $refused = static fn(?string $e): bool => $e !== null && str_contains($e, 'not configured correctly');
+        check($refused($activate) && $refused($renew) && $refused($lock), 'registration, renewal and lock are refused with the generic message', json_encode([$activate, $renew, $lock]));
+        check(requestsSince($mark) === [], 'no request reached OSIR (Test Mode never becomes live operations)');
+        $pdo = new PDO('mysql:host=db;dbname=fossbilling', 'fossbilling', getenv('OSIRFB_DB_PASSWORD') ?: '');
+        $logged = (int) $pdo->query("SELECT COUNT(*) FROM activity_system WHERE message LIKE '%OSIR has no test environment%'")->fetchColumn();
+        $files = '';
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator('/fb/data/log', FilesystemIterator::SKIP_DOTS)) as $file) {
+            $files .= (string) file_get_contents((string) $file);
+        }
+        check($logged > 0 || str_contains($files, 'OSIR has no test environment'), 'the administrator log says to turn Test Mode off');
+    } finally {
+        fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'test_mode' => 0]);
+    }
+    fb('order/delete', ['id' => $pending]);
 }, ['2']);
 
 scenario('10', 'Wrong API key: generic message, key not echoed', function () use (&$registrarId, &$orderId): void {
@@ -608,7 +624,7 @@ scenario('14', 'Log hygiene: no API key, no auth code in FOSSBilling logs', func
         $haystack .= $row['message'] . "\n";
     }
     check(str_contains($haystack, '[OSIR]'), 'adapter log lines are present (debug on)');
-    check(!str_contains($haystack, 'E2eLiveKey') && !str_contains($haystack, 'E2eTestKey'), 'no API key in any log');
+    check(!str_contains($haystack, 'E2eLiveKey') && !str_contains($haystack, 'E2eOldSandbox'), 'no API key in any log (live or old sandbox)');
     $code = mock('state')['domains']["$domain.com"]['authCode'];
     check(!str_contains($haystack, $code), 'no auth code in any log');
     check(!str_contains($haystack, 'fossbilling-e2e+') && !str_contains($haystack, 'grace@example.org'), 'no contact e-mail in any log');
