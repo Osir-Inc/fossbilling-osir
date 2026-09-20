@@ -65,4 +65,15 @@ class Model_Tld extends RedBeanPHP\SimpleModel {}
  * @property string|null $updated_at
  */
 class Model_ServiceDomain extends RedBeanPHP\SimpleModel {}
+
+/**
+ * @property int|string|null $id
+ * @property int|string|null $client_id
+ * @property string|null $status
+ * @property string|null $service_type
+ */
+class Model_ClientOrder extends RedBeanPHP\SimpleModel
+{
+    public const string STATUS_ACTIVE = 'active';
+}
 }

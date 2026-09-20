@@ -41,6 +41,20 @@ final class IdempotencyKeys
         return self::build('transfer', $installationId, $env, $order, $domain, '', $attempt);
     }
 
+    /**
+     * Adding a DNS record. Nothing is charged here, so the key exists only so that a retry after a
+     * timeout cannot add the same record twice.
+     *
+     * $nonce is new for every submission, and deliberately not derived from the record: OSIR keeps
+     * a keyed outcome for 30 days, so a key that depended only on (order, record) would replay the
+     * first answer when a client deleted a record and added it back — the record would never
+     * reappear and the client area would still report success.
+     */
+    public static function dnsRecord(string $installationId, Environment $env, OrderRef $order, DomainName $domain, string $nonce): string
+    {
+        return self::build('dns-add', $installationId, $env, $order, $domain, $nonce, 1);
+    }
+
     private static function build(string $action, string $installationId, Environment $env, OrderRef $order, DomainName $domain, string $extra, int $attempt): string
     {
         $parts = ['fb', $installationId, $env->value, 'o' . $order->id, $action, $domain->ascii()];

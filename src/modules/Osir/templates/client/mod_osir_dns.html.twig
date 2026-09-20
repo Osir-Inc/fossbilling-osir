@@ -1,0 +1,223 @@
+{% extends request.ajax ? "layout_blank.html.twig" : "layout_default.html.twig" %}
+{% set active_menu = 'order' %}
+
+{% block meta_title %}{{ 'DNS for %domain%'|trans({'%domain%': overview.domain}) }}{% endblock %}
+
+{% block breadcrumb %}
+    <li class="breadcrumb-item"><a href="{{ 'order/service'|url }}">{{ 'Services'|trans }}</a></li>
+    <li class="breadcrumb-item"><a href='{{ "order/service/manage/#{order_id}"|url }}'>{{ overview.domain }}</a></li>
+    <li class="breadcrumb-item active">{{ 'DNS'|trans }}</li>
+{% endblock %}
+
+{% block content %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h1 class="mb-1">{{ 'DNS for %domain%'|trans({'%domain%': overview.domain}) }}</h1>
+            <span class="small text-muted">{{ 'Records are served by OSIR. Changes take effect as soon as the record\'s TTL expires.'|trans }}</span>
+        </div>
+
+        <div class="card-body">
+            {% if not overview.status.uses_our_nameservers %}
+                <div class="alert alert-warning" role="alert">
+                    <strong>{{ 'These records are not in use.'|trans }}</strong>
+                    {{ '%domain% does not point at our nameservers, so the records below are stored but do not resolve.'|trans({'%domain%': overview.domain}) }}
+                    {% if overview.status.our_nameservers is not empty %}
+                        {{ 'Set the domain\'s nameservers to %nameservers% to use them.'|trans({'%nameservers%': overview.status.our_nameservers|join(', ')}) }}
+                    {% endif %}
+                    <a href='{{ "order/service/manage/#{order_id}"|url }}'>{{ 'Change nameservers'|trans }}</a>
+                </div>
+            {% endif %}
+
+            <table class="table table-striped table-sm align-middle" id="osir-dns-table">
+                <thead>
+                    <tr>
+                        <th>{{ 'Name'|trans }}</th>
+                        <th>{{ 'Type'|trans }}</th>
+                        <th>{{ 'Value'|trans }}</th>
+                        <th class="text-end">{{ 'TTL'|trans }}</th>
+                        <th class="text-end">{{ 'Priority'|trans }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in overview.records %}
+                        <tr data-record-id="{{ record.id }}" data-name="{{ record.name }}" data-type="{{ record.type }}"
+                            data-content="{{ record.content }}" data-ttl="{{ record.ttl }}" data-priority="{{ record.priority }}"
+                            data-weight="{{ record.weight }}" data-port="{{ record.port }}" data-disabled="{{ record.disabled ? '1' : '0' }}">
+                            <td>{{ record.name }}{% if record.disabled %} <span class="badge bg-secondary">{{ 'Disabled'|trans }}</span>{% endif %}</td>
+                            <td>{{ record.type }}</td>
+                            <td class="text-break">{{ record.content }}</td>
+                            <td class="text-end">{{ record.ttl ?: '-' }}</td>
+                            <td class="text-end">{{ record.priority is null ? '-' : record.priority }}</td>
+                            <td class="text-end">
+                                {% if record.locked %}
+                                    <span class="small text-muted">{{ 'Managed by OSIR'|trans }}</span>
+                                {% elseif record.id %}
+                                    <button type="button" class="btn btn-sm btn-secondary osir-dns-edit">{{ 'Edit'|trans }}</button>
+                                    <button type="button" class="btn btn-sm btn-danger osir-dns-delete">{{ 'Delete'|trans }}</button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="6" class="text-muted">{{ 'This domain has no DNS records yet.'|trans }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0" id="osir-dns-form-title">{{ 'Add a record'|trans }}</h5>
+        </div>
+        <div class="card-body">
+            <form id="osir-dns-form" class="row g-3">
+                <input type="hidden" name="record_id" value="">
+                <div class="col-md-3">
+                    <label class="form-label" for="osir-dns-name">{{ 'Name'|trans }}</label>
+                    <input class="form-control" type="text" id="osir-dns-name" name="name" placeholder="@" required>
+                    <span class="form-text">{{ 'Use @ for the domain itself, or a host such as www.'|trans }}</span>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="osir-dns-type">{{ 'Type'|trans }}</label>
+                    <select class="form-select" id="osir-dns-type" name="type">
+                        {% for type in ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS', 'PTR', 'NAPTR'] %}
+                            <option value="{{ type }}">{{ type }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="osir-dns-content">{{ 'Value'|trans }}</label>
+                    <input class="form-control" type="text" id="osir-dns-content" name="content" required>
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label" for="osir-dns-ttl">{{ 'TTL'|trans }}</label>
+                    <input class="form-control" type="number" id="osir-dns-ttl" name="ttl" min="60" max="604800" placeholder="3600">
+                </div>
+                <div class="col-md-2 osir-dns-priority d-none">
+                    <label class="form-label" for="osir-dns-priority">{{ 'Priority'|trans }}</label>
+                    <input class="form-control" type="number" id="osir-dns-priority" name="priority" min="0" max="65535" value="10">
+                </div>
+                <div class="col-md-2 osir-dns-srv d-none">
+                    <label class="form-label" for="osir-dns-weight">{{ 'Weight'|trans }}</label>
+                    <input class="form-control" type="number" id="osir-dns-weight" name="weight" min="0" max="65535" value="0">
+                </div>
+                <div class="col-md-2 osir-dns-srv d-none">
+                    <label class="form-label" for="osir-dns-port">{{ 'Port'|trans }}</label>
+                    <input class="form-control" type="number" id="osir-dns-port" name="port" min="1" max="65535">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="osir-dns-disabled" name="disabled" value="1">
+                        <label class="form-check-label" for="osir-dns-disabled">{{ 'Disabled'|trans }}</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <button class="btn btn-primary" type="submit" id="osir-dns-save">{{ 'Add record'|trans }}</button>
+                    <button class="btn btn-link d-none" type="button" id="osir-dns-cancel">{{ 'Cancel'|trans }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="osir-dns-text" class="d-none"
+         data-add-title="{{ 'Add a record'|trans }}" data-add-button="{{ 'Add record'|trans }}"
+         data-edit-title="{{ 'Edit record'|trans }}" data-edit-button="{{ 'Save record'|trans }}"
+         data-confirm-delete="{{ 'Delete this DNS record?'|trans }}"
+         data-deleted="{{ 'Record deleted'|trans }}" data-saved="{{ 'Record saved'|trans }}"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const text = document.getElementById('osir-dns-text').dataset;
+            const orderId = {{ order_id }};
+            const form = document.getElementById('osir-dns-form');
+            const typeField = document.getElementById('osir-dns-type');
+            const title = document.getElementById('osir-dns-form-title');
+            const saveButton = document.getElementById('osir-dns-save');
+            const cancelButton = document.getElementById('osir-dns-cancel');
+
+            const reload = () => window.location.reload();
+
+            // Without this, a refused record (bad TTL, apex, stale id) would only reach the
+            // browser console: every message this feature produces is written for the client.
+            const showError = (error) => {
+                const message = (error && (error.message || error.error)) || '';
+                FOSSBilling.message(message || 'The record could not be saved.', 'error');
+            };
+
+            // Priority, weight and port only apply to some types; hide them elsewhere so the form
+            // matches what the API accepts.
+            const showFieldsForType = () => {
+                const type = typeField.value;
+                const needsPriority = ['MX', 'SRV', 'NAPTR'].includes(type);
+                const needsSrv = type === 'SRV';
+                document.querySelectorAll('.osir-dns-priority').forEach(el => el.classList.toggle('d-none', !needsPriority));
+                document.querySelectorAll('.osir-dns-srv').forEach(el => el.classList.toggle('d-none', !needsSrv));
+            };
+            typeField.addEventListener('change', showFieldsForType);
+            showFieldsForType();
+
+            const resetForm = () => {
+                form.reset();
+                form.elements.record_id.value = '';
+                title.textContent = text.addTitle;
+                saveButton.textContent = text.addButton;
+                cancelButton.classList.add('d-none');
+                showFieldsForType();
+            };
+            cancelButton.addEventListener('click', resetForm);
+
+            document.querySelectorAll('.osir-dns-edit').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    const row = button.closest('tr');
+                    form.elements.record_id.value = row.dataset.recordId;
+                    form.elements.name.value = row.dataset.name;
+                    form.elements.type.value = row.dataset.type;
+                    form.elements.content.value = row.dataset.content;
+                    form.elements.ttl.value = row.dataset.ttl;
+                    form.elements.priority.value = row.dataset.priority;
+                    form.elements.weight.value = row.dataset.weight;
+                    form.elements.port.value = row.dataset.port;
+                    form.elements.disabled.checked = row.dataset.disabled === '1';
+                    title.textContent = text.editTitle;
+                    saveButton.textContent = text.editButton;
+                    cancelButton.classList.remove('d-none');
+                    showFieldsForType();
+                    form.scrollIntoView({behavior: 'smooth'});
+                });
+            });
+
+            document.querySelectorAll('.osir-dns-delete').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    if (!window.confirm(text.confirmDelete)) {
+                        return;
+                    }
+                    FOSSBilling.api.client.post('osir/dns_record_delete',
+                        {order_id: orderId, record_id: button.closest('tr').dataset.recordId},
+                        () => { FOSSBilling.message(text.deleted); reload(); },
+                        showError);
+                });
+            });
+
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                const values = Object.fromEntries(new FormData(form).entries());
+                const params = {order_id: orderId, name: values.name, type: values.type, content: values.content,
+                    disabled: form.elements.disabled.checked};
+                ['ttl', 'priority', 'weight', 'port'].forEach(function (field) {
+                    if (values[field] !== '' && values[field] !== undefined) {
+                        params[field] = values[field];
+                    }
+                });
+
+                if (values.record_id) {
+                    params.record_id = values.record_id;
+                }
+
+                FOSSBilling.api.client.post(values.record_id ? 'osir/dns_record_update' : 'osir/dns_record_create', params,
+                    () => { FOSSBilling.message(text.saved); reload(); },
+                    showError);
+            });
+        });
+    </script>
+{% endblock %}

@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 use Osir\FossBilling\Config\Settings;
 use Osir\FossBilling\Config\SettingsResolver;
+use Osir\FossBilling\Dns\DnsService;
 use Osir\FossBilling\Exception\ApiErrorKind;
 use Osir\FossBilling\Exception\ApiException;
 use Osir\FossBilling\Exception\ConfigurationException;
@@ -363,6 +364,36 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
             new ApiClient($this->getHttpClient(), $this->settings, $this->safeLog, RetryPolicy::forCurrentSapi()),
             $this->safeLog,
         );
+    }
+
+    /**
+     * DNS records for the client area (the companion module in modules/Osir). Ownership of the
+     * domain is decided there and re-checked by OSIR; this only builds the client.
+     *
+     * @throws ConfigurationException when the adapter cannot be configured
+     */
+    public function dnsService(): DnsService
+    {
+        $this->service();
+        assert($this->settings !== null && $this->safeLog !== null);
+
+        return new DnsService(
+            new ApiClient($this->getHttpClient(), $this->settings, $this->safeLog, RetryPolicy::forCurrentSapi()),
+            $this->safeLog,
+        );
+    }
+
+    /**
+     * The installation-wide id used in idempotency keys, and the environment they carry.
+     *
+     * @return array{installation: string, environment: \Osir\FossBilling\Config\Environment}
+     */
+    public function keyScope(): array
+    {
+        $this->service();
+        assert($this->settings !== null);
+
+        return ['installation' => $this->settings->installationId, 'environment' => $this->settings->environment];
     }
 
     private function unchangedBecauseGone(Registrar_Domain $domain, string $name, string $why): Registrar_Domain

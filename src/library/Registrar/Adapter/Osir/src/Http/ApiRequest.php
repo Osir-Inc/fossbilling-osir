@@ -77,6 +77,12 @@ final class ApiRequest
         return new self('PUT', self::assertPath($path), $query, $body, null, 120.0);
     }
 
+    /** @param array<string, scalar> $query */
+    public static function delete(string $path, array $query = []): self
+    {
+        return new self('DELETE', self::assertPath($path), $query, null, null, 120.0);
+    }
+
     /**
      * Fills a path template: every "{domain}" placeholder is replaced by the domain's encoded
      * ASCII form. Templates are compile-time constants in the service layer.

@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-09-20
+
+### Added
+- **DNS management in the client area.** Clients can list, add, edit and delete the DNS records of a domain they
+  hold as an active order registered through OSIR, at `/osir/dns/<order id>`. No new product, order or invoice:
+  the page hangs off the domain order itself.
+  - The domain is always resolved from the client's own order (FOSSBilling's `findForClientById`), never from the
+    request, and OSIR checks ownership again on every call.
+  - The zone apex stays with OSIR: the SOA record and the domain's own NS records can be neither written,
+    overwritten nor deleted — including by record id, which the page itself exposes. Sub-zone NS records and a
+    CNAME on a host are allowed; a CNAME on the domain itself is refused, because it would break mail and web.
+  - Records are validated before anything is sent (type, TTL, SRV port and weight, MX priority, and values that
+    match their type), and every refusal is shown to the client rather than being logged to the browser console.
+  - Adding a record carries a fresh `Idempotency-Key` per submission, so a retry after a timeout cannot add it
+    twice while deleting a record and adding it back still works (a key reused across submissions would make
+    OSIR replay its first answer for 30 days, and the record would silently never reappear).
+  - The listing is cached for 20 seconds per order and dropped on every write, so one client reloading the page
+    cannot exhaust the API key the whole installation shares.
+  - The page warns when the domain does not use OSIR's nameservers, so records that cannot resolve are not
+    edited silently. The nameservers are read from OSIR, never hardcoded.
+  - Needs OSIR's `/v2/dns` endpoints; no new setting, and the existing API key is used.
+- The module's admin page is unchanged; its name is now "OSIR domains", since it covers more than the import.
+
 ## [1.1.0] - 2026-09-19
 
 ### Removed

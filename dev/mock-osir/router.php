@@ -42,6 +42,8 @@ const KEYS = [
     'osir_live_E2eLiveKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' => 'cust-e2e',
 ];
 const STATE_FILE = '/state/db.json';
+/** OSIR's own nameservers (ns1/ns3, not ns1..ns4); constants must be defined before the dispatch. */
+const OUR_NAMESERVERS = ['ns1.osir.test', 'ns3.osir.test'];
 const LOG_FILE = '/state/requests.jsonl';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -62,7 +64,7 @@ function withState(callable $fn): mixed
     $raw = stream_get_contents($fh);
     $state = $raw ? json_decode($raw, true) : null;
     if (!is_array($state)) {
-        $state = ['domains' => [], 'balance_cents' => 100000, 'idempotency' => [], 'transfers' => [], 'faults' => [], 'charges' => []];
+        $state = ['domains' => [], 'balance_cents' => 100000, 'idempotency' => [], 'transfers' => [], 'faults' => [], 'charges' => [], 'dns' => []];
     }
     $result = $fn($state);
     ftruncate($fh, 0);
@@ -216,6 +218,13 @@ $routes = [
     ['GET', '#^/v1/public/catalog/domains$#', 'catalog'],
     ['GET', '#^/v2/domains$#', 'listDomains'],
     ['GET', '#^/v2/domains/([^/]+)/contacts$#', 'readContacts'],
+    // DNS (both prefixes, as OSIR serves them: /dns/** is frozen for WHMCS, /v2/dns/** is new)
+    ['GET', '#^(?:/v2)?/dns/domains/([^/]+)/records$#', 'dnsRecords'],
+    ['POST', '#^(?:/v2)?/dns/domains/([^/]+)/records$#', 'dnsCreate'],
+    ['GET', '#^(?:/v2)?/dns/domains/([^/]+)/records/([^/]+)$#', 'dnsRecord'],
+    ['PUT', '#^(?:/v2)?/dns/domains/([^/]+)/records/([^/]+)$#', 'dnsUpdate'],
+    ['DELETE', '#^(?:/v2)?/dns/domains/([^/]+)/records/([^/]+)$#', 'dnsDelete'],
+    ['GET', '#^(?:/v2)?/dns/domains/([^/]+)/status$#', 'dnsStatus'],
 ];
 
 $handler = null;
@@ -260,6 +269,8 @@ $idemEndpoint = match ($handler) {
     'register' => 'domains.register',
     'renew' => 'domains.renew',
     'transfer' => 'transfer.initiate',
+    // Not a money endpoint, but keyed all the same: a retried create must not add the record twice.
+    'dnsCreate' => 'dns.records.create',
     default => null,
 };
 $idemKey = $idemEndpoint !== null ? trim((string) ($headers['idempotency-key'] ?? '')) : '';
@@ -267,6 +278,7 @@ if ($idemKey !== '') {
     $fingerprint = match ($handler) {
         'register' => strtolower((string) ($body['domain'] ?? '')) . ':' . (int) ($body['period'] ?? 1),
         'renew' => strtolower($params[0]) . ':' . (int) ($body['period'] ?? 1),
+        'dnsCreate' => strtolower($params[0] . '|' . ($body['name'] ?? '') . '|' . ($body['type'] ?? '') . '|' . ($body['content'] ?? '')),
         default => strtolower((string) ($body['domain'] ?? '')),
     };
     $slot = $customer . '|' . $idemEndpoint . '|' . $idemKey;
@@ -622,4 +634,173 @@ function readContacts(array &$s, array $p, array $b, array $q, string $c): array
     }
 
     return ok(['domainName' => $d, 'registrant' => $rec['contacts']['registrant'] ?? null, 'admin' => null, 'tech' => null, 'billing' => null]);
+}
+
+
+// ---------------------------------------------------------------- DNS
+//
+// OSIR derives a record's id from name + type + content, so editing a record changes its id, and
+// creating a record creates the zone with OSIR defaults when there is none yet. Both are modelled
+// here, because the client area depends on them.
+
+function dnsRecordId(array $r): string
+{
+    return substr(hash('sha256', strtolower($r['name']) . '|' . $r['type'] . '|' . $r['content']), 0, 24);
+}
+
+/** @return list<array<string, mixed>> */
+function dnsZone(array &$s, string $d): array
+{
+    if (!isset($s['dns'][$d])) {
+        $s['dns'][$d] = [
+            ['name' => $d, 'type' => 'SOA', 'content' => OUR_NAMESERVERS[0] . '. admin.' . $d . '. 1 10800 3600 604800 3600', 'ttl' => 3600, 'disabled' => false],
+            ['name' => $d, 'type' => 'NS', 'content' => OUR_NAMESERVERS[0], 'ttl' => 3600, 'disabled' => false],
+            ['name' => $d, 'type' => 'NS', 'content' => OUR_NAMESERVERS[1], 'ttl' => 3600, 'disabled' => false],
+        ];
+    }
+
+    return $s['dns'][$d];
+}
+
+function dnsOut(array $r): array
+{
+    return array_merge(['id' => dnsRecordId($r), 'priority' => null, 'weight' => null, 'port' => null], $r);
+}
+
+function dnsRecords(array &$s, array $p, array $b, array $q, string $c): array
+{
+    $d = strtolower($p[0]);
+    if (owned($s, $d, $c) === null) {
+        return ownershipError(403, 'Domain not owned: ' . $d);
+    }
+    $type = isset($q['type']) ? strtoupper((string) $q['type']) : null;
+    $records = array_values(array_filter(dnsZone($s, $d), static fn(array $r): bool => $type === null || $r['type'] === $type));
+
+    return ok(array_map('dnsOut', $records));
+}
+
+function dnsCreate(array &$s, array $p, array $b, array $q, string $c): array
+{
+    $d = strtolower($p[0]);
+    if (owned($s, $d, $c) === null) {
+        return ownershipError(403, 'Domain not owned: ' . $d);
+    }
+    $record = dnsValidate($b);
+    if (!is_array($record)) {
+        return [400, ['error' => $record, 'message' => $record]];
+    }
+    // Creating a record creates the zone first, exactly as OSIR does.
+    $zone = dnsZone($s, $d);
+    $zone[] = $record;
+    $s['dns'][$d] = $zone;
+
+    return ok(dnsOut($record), 201);
+}
+
+function dnsRecord(array &$s, array $p, array $b, array $q, string $c): array
+{
+    $d = strtolower($p[0]);
+    if (owned($s, $d, $c) === null) {
+        return ownershipError(403, 'Domain not owned: ' . $d);
+    }
+    foreach (dnsZone($s, $d) as $r) {
+        if (dnsRecordId($r) === $p[1]) {
+            return ok(dnsOut($r));
+        }
+    }
+
+    return [404, ['error' => 'Record not found', 'message' => 'No record with id ' . $p[1]]];
+}
+
+function dnsUpdate(array &$s, array $p, array $b, array $q, string $c): array
+{
+    $d = strtolower($p[0]);
+    if (owned($s, $d, $c) === null) {
+        return ownershipError(403, 'Domain not owned: ' . $d);
+    }
+    $record = dnsValidate($b);
+    if (!is_array($record)) {
+        return [400, ['error' => $record, 'message' => $record]];
+    }
+    $zone = dnsZone($s, $d);
+    foreach ($zone as $i => $r) {
+        if (dnsRecordId($r) === $p[1]) {
+            $zone[$i] = $record;
+            $s['dns'][$d] = $zone;
+
+            return ok(dnsOut($record));
+        }
+    }
+
+    return [404, ['error' => 'Record not found', 'message' => 'No record with id ' . $p[1]]];
+}
+
+function dnsDelete(array &$s, array $p, array $b, array $q, string $c): array
+{
+    $d = strtolower($p[0]);
+    if (owned($s, $d, $c) === null) {
+        return ownershipError(403, 'Domain not owned: ' . $d);
+    }
+    $zone = dnsZone($s, $d);
+    foreach ($zone as $i => $r) {
+        if (dnsRecordId($r) === $p[1]) {
+            unset($zone[$i]);
+            $s['dns'][$d] = array_values($zone);
+
+            return ok(['deleted' => true]);
+        }
+    }
+
+    return [404, ['error' => 'Record not found', 'message' => 'No record with id ' . $p[1]]];
+}
+
+function dnsStatus(array &$s, array $p, array $b, array $q, string $c): array
+{
+    $d = strtolower($p[0]);
+    $rec = owned($s, $d, $c);
+    if ($rec === null) {
+        return ownershipError(403, 'Domain not owned: ' . $d);
+    }
+    $ns = array_map('strtolower', $rec['ns']);
+
+    return ok([
+        'domain' => $d,
+        'zoneExists' => isset($s['dns'][$d]),
+        'usesOurNameservers' => array_intersect($ns, OUR_NAMESERVERS) !== [],
+        'nameservers' => $ns,
+        'ourNameservers' => OUR_NAMESERVERS,
+    ]);
+}
+
+/** @return array<string, mixed>|string the normalised record, or the reason it was rejected */
+function dnsValidate(array $b): array|string
+{
+    $name = strtolower(trim((string) ($b['name'] ?? '')));
+    $type = strtoupper(trim((string) ($b['type'] ?? '')));
+    $content = trim((string) ($b['content'] ?? ''));
+    if ($name === '' || $content === '') {
+        return 'name and content are required';
+    }
+    if (!in_array($type, ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'CAA', 'NAPTR'], true)) {
+        return 'unsupported record type';
+    }
+    $ttl = isset($b['ttl']) ? (int) $b['ttl'] : 3600;
+    if ($ttl <= 0) {
+        return 'ttl must be greater than 0';
+    }
+    if ($type === 'SRV') {
+        $port = (int) ($b['port'] ?? 0);
+        if ($port < 1 || $port > 65535) {
+            return 'SRV records require a port between 1 and 65535';
+        }
+    }
+
+    $record = ['name' => $name, 'type' => $type, 'content' => $content, 'ttl' => $ttl, 'disabled' => ($b['disabled'] ?? false) === true];
+    foreach (['priority', 'weight', 'port'] as $field) {
+        if (isset($b[$field])) {
+            $record[$field] = (int) $b[$field];
+        }
+    }
+
+    return $record;
 }

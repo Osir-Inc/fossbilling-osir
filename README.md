@@ -10,6 +10,7 @@ Register, transfer, renew and manage domains through [OSIR](https://osir.com) fr
 - `osir-doctor`, a read-only diagnostics command
 - **OSIR import** (System → OSIR import): import OSIR's TLDs with your markup, and turn domains already in your
   OSIR account into FOSSBilling orders
+- **DNS in the client area**: your clients manage the records of their OSIR-registered domains themselves
 
 ![OSIR import: TLDs priced from OSIR's quote plus your markup](docs/screenshots/admin-import-tlds.png)
 
@@ -156,6 +157,35 @@ Like everything else, the import does not work while Test Mode is on.
 
 The module needs the **Use the OSIR import** staff permission, plus **Manage TLDs** to import TLDs, and order
 and domain management to import domains.
+
+## DNS in the client area
+
+Clients manage the DNS records of a domain they hold through you at `/osir/dns/<order id>`: list, add, edit and
+delete A, AAAA, CNAME, MX, TXT, SRV, CAA, NS, PTR and NAPTR records. There is nothing to sell or invoice — the
+page belongs to the domain order itself — and no extra setting: it uses the same API key as the registrar.
+
+What it enforces:
+
+- The domain comes from the client's own active order (FOSSBilling's own ownership check), never from the
+  request. OSIR checks ownership again on every call, so a client can only ever reach their own domains.
+- The zone apex belongs to OSIR: the SOA record and the domain's own NS records are shown but cannot be changed
+  (NS records for sub-zones can). Nameservers are changed on the domain page, as before.
+- Records are validated before anything is sent, and adding one carries an idempotency key, so a retry after a
+  timeout cannot create it twice.
+- If the domain does not use OSIR's nameservers, the page says so: the records are stored but do not resolve.
+
+The page needs the module to be activated under **Extensions**, and the domains to be registered through the
+OSIR registrar. It is not shown for domains at another registrar.
+
+### Linking to it from the domain page
+
+FOSSBilling's own domain page cannot be extended by a module, so add the link in your theme's
+`mod_servicedomain_manage.html.twig` (copy it from `modules/Servicedomain/templates/client/` into
+`themes/<your theme>/html/` if you have not already), inside the tab bar:
+
+```twig
+<a class="nav-link" href='{{ "osir/dns/#{order.id}"|url }}'>{{ 'DNS'|trans }}</a>
+```
 
 ## Optional: the OSIR client theme
 

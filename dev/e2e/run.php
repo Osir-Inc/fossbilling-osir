@@ -150,6 +150,88 @@ function setConstant(string $name, ?string $value): void
     sleep(3);
 }
 
+/** Reads one cookie out of a curl cookie jar. */
+function cookieValue(string $jar, string $name): ?string
+{
+    foreach (explode("\n", (string) @file_get_contents($jar)) as $line) {
+        $parts = explode("\t", trim($line));
+        if (count($parts) === 7 && $parts[5] === $name) {
+            return $parts[6];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Calls the CLIENT API as a signed-in client (session cookie), which is how the DNS tab is used.
+ * Each caller keeps its own cookie jar, so one client's session can never be reused for another.
+ *
+ * @return array{0: mixed, 1: string|null}
+ */
+function clientApi(string $jar, string $endpoint, array $params = []): array
+{
+    $ch = curl_init(FB . '/api/client/' . $endpoint);
+    // A session-authenticated client call carries the CSRF token, exactly as the browser does.
+    $headers = ['Content-Type: application/json'];
+    $csrf = cookieValue($jar, 'fossbilling_csrf');
+    if ($csrf !== null) {
+        $headers[] = 'X-CSRF-TOKEN: ' . $csrf;
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 120,
+        CURLOPT_POSTFIELDS => json_encode($params),
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_COOKIEFILE => $jar,
+        CURLOPT_COOKIEJAR => $jar,
+    ]);
+    $raw = (string) curl_exec($ch);
+    curl_close($ch);
+    $json = json_decode($raw, true);
+    if (!is_array($json)) {
+        return [null, 'non-JSON response: ' . substr($raw, 0, 200)];
+    }
+    $error = $json['error'] ?? null;
+
+    return [$json['result'] ?? null, is_array($error) ? (string) ($error['message'] ?? 'error') : null];
+}
+
+/**
+ * Signs a client in and returns their cookie jar.
+ *
+ * @param-out string|null $error
+ */
+function clientLogin(string $suffix, ?string &$error = null): string
+{
+    $jar = tempnam(sys_get_temp_dir(), 'e2e-client-');
+
+    // A browser loads a page first, which is what issues the CSRF cookie the API then requires.
+    $ch = curl_init(FB . '/');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_COOKIEFILE => $jar, CURLOPT_COOKIEJAR => $jar]);
+    curl_exec($ch);
+    curl_close($ch);
+
+    $ch = curl_init(FB . '/api/guest/client/login');
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_POSTFIELDS => json_encode(['email' => "fossbilling-e2e+$suffix@osir.com", 'password' => 'E2e-Passw0rd!' . $suffix]),
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_COOKIEFILE => $jar,
+        CURLOPT_COOKIEJAR => $jar,
+    ]);
+    $raw = (string) curl_exec($ch);
+    curl_close($ch);
+    $json = json_decode($raw, true);
+    $err = is_array($json) ? ($json['error'] ?? null) : null;
+    $error = is_array($err) ? (string) ($err['message'] ?? 'error') : (is_array($json) ? null : 'non-JSON login response: ' . substr($raw, 0, 200));
+
+    return $jar;
+}
+
 function createClient(string $suffix): int
 {
     return (int) fbOk('client/create', [
@@ -629,6 +711,79 @@ scenario('14', 'Log hygiene: no API key, no auth code in FOSSBilling logs', func
     check(!str_contains($haystack, $code), 'no auth code in any log');
     check(!str_contains($haystack, 'fossbilling-e2e+') && !str_contains($haystack, 'grace@example.org'), 'no contact e-mail in any log');
 }, ['2', '6']);
+
+scenario('23', 'Client DNS tab: only your own domain, and never the zone apex', function () use ($suffix): void {
+    // Its own client and domain: the shared order of scenario 2 is cancelled by scenario 13.
+    $dnsSuffix = $suffix . 'd';
+    $client = createClient($dnsSuffix);
+    $name = "e2e-dns-$suffix";
+    [$order, $orderError] = orderDomain($client, ['action' => 'register', 'register_sld' => $name, 'register_tld' => '.com', 'register_years' => 1]);
+    check($orderError === null, 'a domain is registered for the DNS client', (string) $orderError);
+    $order = (int) $order;
+
+    $jar = clientLogin($dnsSuffix, $loginError);
+    check($loginError === null, 'the client signs in to their own area', (string) $loginError);
+
+    [$overview, $error] = clientApi($jar, 'osir/dns_records', ['order_id' => $order]);
+    check($error === null && is_array($overview), 'client reads the records of their own domain', (string) $error);
+    check(($overview['domain'] ?? '') === "$name.com", 'the domain comes from the order, not the request');
+    check(($overview['status']['uses_our_nameservers'] ?? true) === false, 'warns that the domain is not on OSIR nameservers');
+    check(array_filter($overview['records'] ?? [], static fn(array $r): bool => $r['type'] === 'SOA') !== [], 'the zone apex is shown');
+
+    $mark = requestCount();
+    [, $error] = clientApi($jar, 'osir/dns_record_create', ['order_id' => $order, 'name' => 'www', 'type' => 'A', 'content' => '203.0.113.7', 'ttl' => 600]);
+    check($error === null, 'a record is added', (string) $error);
+    $created = only(requestsSince($mark), 'POST', '#^/v2/dns/domains/[^/]+/records$#');
+    check(count($created) === 1, 'exactly one DNS write');
+    check(preg_match("#^fb:[0-9a-f]{12}:live:o$order:dns-add:$name\\.com:[0-9a-f]{12}$#", (string) ($created[0]['idempotency_key'] ?? '')) === 1, 'the create carries an idempotency key bound to the order and record', (string) ($created[0]['idempotency_key'] ?? ''));
+
+    [$after] = clientApi($jar, 'osir/dns_records', ['order_id' => $order]);
+    $www = array_values(array_filter($after['records'] ?? [], static fn(array $r): bool => $r['name'] === "www.$name.com"));
+    check(count($www) === 1 && $www[0]['content'] === '203.0.113.7', 'the record is there afterwards');
+
+    // The apex belongs to OSIR: refused locally, so nothing is sent at all.
+    $mark = requestCount();
+    [, $soa] = clientApi($jar, 'osir/dns_record_create', ['order_id' => $order, 'name' => '@', 'type' => 'SOA', 'content' => 'ns1.osir.test. a.b. 1 2 3 4 5']);
+    [, $ns] = clientApi($jar, 'osir/dns_record_create', ['order_id' => $order, 'name' => '@', 'type' => 'NS', 'content' => 'ns1.attacker.test']);
+    [, $ttl] = clientApi($jar, 'osir/dns_record_create', ['order_id' => $order, 'name' => 'x', 'type' => 'A', 'content' => '203.0.113.7', 'ttl' => 5]);
+    check($soa !== null && $ns !== null && $ttl !== null, 'SOA, apex NS and an impossible TTL are all refused');
+    check(requestsSince($mark) === [], 'nothing was sent to OSIR for a refused record');
+
+    // Another client's domain: refused before OSIR is contacted.
+    $otherClient = createClient($suffix . 'e');
+    [$otherOrder, $otherError] = orderDomain($otherClient, ['action' => 'register', 'register_sld' => "e2e-dns2-$suffix", 'register_tld' => '.com', 'register_years' => 1]);
+    check($otherError === null, "a second client's domain is registered", (string) $otherError);
+    $mark = requestCount();
+    [, $denied] = clientApi($jar, 'osir/dns_records', ['order_id' => (int) $otherOrder]);
+    check($denied === 'Order not found', "another client's domain is refused", (string) $denied);
+    check(requestsSince($mark) === [], 'nothing was sent to OSIR for a foreign order');
+
+    // The apex is OSIR's: its record ids are in the page, so they must be refused server-side.
+    $apexNs = array_values(array_filter($after['records'] ?? [], static fn(array $r): bool => $r['type'] === 'NS' && $r['name'] === "$name.com"));
+    $soa = array_values(array_filter($after['records'] ?? [], static fn(array $r): bool => $r['type'] === 'SOA'));
+    check($apexNs !== [] && $soa !== [], 'the apex records are listed with ids');
+    check(($soa[0]['locked'] ?? false) === true && ($apexNs[0]['locked'] ?? false) === true, 'the apex rows are marked as managed by OSIR');
+    [, $soaDelete] = clientApi($jar, 'osir/dns_record_delete', ['order_id' => $order, 'record_id' => (string) ($soa[0]['id'] ?? '')]);
+    check($soaDelete !== null, 'deleting the SOA record by id is refused', 'it was deleted');
+    [, $nsOverwrite] = clientApi($jar, 'osir/dns_record_update', ['order_id' => $order, 'record_id' => (string) ($apexNs[0]['id'] ?? ''), 'name' => 'www', 'type' => 'A', 'content' => '203.0.113.9']);
+    check($nsOverwrite !== null, 'overwriting an apex nameserver record by id is refused', 'it was overwritten');
+    [$stillThere] = clientApi($jar, 'osir/dns_records', ['order_id' => $order]);
+    check(count(array_filter($stillThere['records'] ?? [], static fn(array $r): bool => $r['type'] === 'NS' && $r['name'] === "$name.com")) === count($apexNs), 'the apex nameservers are untouched');
+
+    [, $error] = clientApi($jar, 'osir/dns_record_delete', ['order_id' => $order, 'record_id' => (string) ($www[0]['id'] ?? '')]);
+    check($error === null, 'the record is deleted', (string) $error);
+    [$final] = clientApi($jar, 'osir/dns_records', ['order_id' => $order]);
+    check(array_filter($final['records'] ?? [], static fn(array $r): bool => $r['name'] === "www.$name.com") === [], 'it is gone afterwards');
+
+    // Re-adding what was just deleted must really re-add it: a reused idempotency key would make
+    // OSIR replay the first success for 30 days while the record never came back.
+    [, $error] = clientApi($jar, 'osir/dns_record_create', ['order_id' => $order, 'name' => 'www', 'type' => 'A', 'content' => '203.0.113.7', 'ttl' => 600]);
+    check($error === null, 'the same record can be added again', (string) $error);
+    [$again] = clientApi($jar, 'osir/dns_records', ['order_id' => $order]);
+    check(array_filter($again['records'] ?? [], static fn(array $r): bool => $r['name'] === "www.$name.com") !== [], 'the re-added record is really there');
+
+    @unlink($jar);
+}, ['21']);
 
 $total = $passes + $failures;
 echo "\n" . ($failures === 0 ? "\033[32mALL $total CHECKS PASSED\033[0m" : "\033[31m$failures OF $total CHECKS FAILED\033[0m") . "\n";

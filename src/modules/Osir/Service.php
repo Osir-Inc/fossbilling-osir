@@ -14,6 +14,9 @@ use Box\Mod\Product\Entity\Product;
 use Doctrine\ORM\EntityManagerInterface;
 use FOSSBilling\InformationException;
 use FOSSBilling\InjectionAwareInterface;
+use Osir\FossBilling\Dns\DnsRecord;
+use Osir\FossBilling\Dns\DnsService;
+use Osir\FossBilling\Dns\RecordType;
 use Osir\FossBilling\Domain\DomainName;
 use Osir\FossBilling\Exception\OsirException;
 use Osir\FossBilling\Import\CatalogTld;
@@ -22,6 +25,8 @@ use Osir\FossBilling\Import\PriceRule;
 use Osir\FossBilling\Import\RemoteDomain;
 use Osir\FossBilling\Import\TldCost;
 use Osir\FossBilling\Mapping\ContactData;
+use Osir\FossBilling\Service\IdempotencyKeys;
+use Osir\FossBilling\Service\OrderRef;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
 
@@ -48,6 +53,8 @@ class Service implements InjectionAwareInterface
     /** Preview and import within this window use the same OSIR quote, so what was shown is what is saved. */
     private const int COST_TTL = 3600;
     private const int DOMAINS_TTL = 300;
+    /** Short: the DNS tab is per client and must show a change they just made. */
+    private const int DNS_TTL = 20;
 
     protected ?\Pimple\Container $di = null;
 
@@ -572,6 +579,172 @@ class Service implements InjectionAwareInterface
         [$service->contact_first_name, $service->contact_last_name, $service->contact_email, $service->contact_company,
             $service->contact_address1, $service->contact_address2, $service->contact_city, $service->contact_state,
             $service->contact_postcode, $service->contact_country, $service->contact_phone_cc, $service->contact_phone] = $values;
+    }
+
+    // ------------------------------------------------------------------ client DNS
+
+    /**
+     * The DNS tab's data for one domain order: whether OSIR serves the zone, and every record.
+     *
+     * @return array{domain: string, status: array<string, bool|list<string>>, records: list<array<string, bool|int|string|null>>}
+     */
+    public function dnsOverview(\Model_ClientOrder $order): array
+    {
+        [$domain, $dns, $registrar] = $this->dnsFor($order);
+
+        // Briefly cached: the page makes two upstream calls, and every client of the installation
+        // shares one OSIR API key with registrations and renewals. Writes drop the entry, so a
+        // client never sees their own change missing.
+        $overview = $this->cached($this->dnsCacheKey($registrar, $order), self::DNS_TTL, fn(): array => $this->guardOsir(function () use ($domain, $dns): array {
+            $records = [];
+            foreach ($dns->records($domain) as $record) {
+                $row = $record->toArray();
+                // Whether OSIR serves this record, decided here rather than in the template: the
+                // template only has the Unicode domain, which never matches an IDN record name.
+                $row['locked'] = $record->type === RecordType::SOA || ($record->type === RecordType::NS && $record->isApex($domain));
+                $records[] = $row;
+            }
+
+            return [
+                'domain' => $domain->unicode(),
+                'status' => $dns->status($domain)->toArray(),
+                'records' => $records,
+            ];
+        }));
+
+        if (!is_array($overview) || !isset($overview['domain'], $overview['status'], $overview['records'])) {
+            throw new InformationException('The DNS records of this domain could not be read right now. Please try again in a few minutes.');
+        }
+        /** @var array{domain: string, status: array<string, bool|list<string>>, records: list<array<string, bool|int|string|null>>} $overview */
+
+        return $overview;
+    }
+
+    /** @param array<string, mixed> $input */
+    public function dnsAdd(\Model_ClientOrder $order, array $input): void
+    {
+        [$domain, $dns, $registrar] = $this->dnsFor($order);
+
+        $this->guardOsir(function () use ($domain, $dns, $registrar, $order, $input): void {
+            $dns->create($domain, DnsRecord::draft($domain, $input), $this->dnsKey($registrar, $order, $domain));
+        });
+        $this->cache()->delete($this->dnsCacheKey($registrar, $order));
+        $this->log(\Box_Log::INFO, sprintf('Client added a DNS record to %s (order #%d).', $domain->ascii(), self::int($order->id)));
+    }
+
+    /** @param array<string, mixed> $input */
+    public function dnsEdit(\Model_ClientOrder $order, string $recordId, array $input): void
+    {
+        [$domain, $dns, $registrar] = $this->dnsFor($order);
+
+        $this->guardOsir(function () use ($domain, $dns, $recordId, $input): void {
+            $dns->update($domain, $recordId, DnsRecord::draft($domain, $input));
+        });
+        $this->cache()->delete($this->dnsCacheKey($registrar, $order));
+        $this->log(\Box_Log::INFO, sprintf('Client updated a DNS record of %s (order #%d).', $domain->ascii(), self::int($order->id)));
+    }
+
+    public function dnsRemove(\Model_ClientOrder $order, string $recordId): void
+    {
+        [$domain, $dns, $registrar] = $this->dnsFor($order);
+
+        $this->guardOsir(function () use ($domain, $dns, $recordId): void {
+            $dns->delete($domain, $recordId);
+        });
+        $this->cache()->delete($this->dnsCacheKey($registrar, $order));
+        $this->log(\Box_Log::INFO, sprintf('Client deleted a DNS record of %s (order #%d).', $domain->ascii(), self::int($order->id)));
+    }
+
+    /**
+     * Resolves the order to the domain it holds and an OSIR DNS client for it.
+     *
+     * The caller has already proven the order belongs to the signed-in client (the client API
+     * uses FOSSBilling's own findForClientById). Here the order must additionally be an active
+     * domain service registered through an OSIR registrar: the domain name is taken from that
+     * service row, never from the request, and OSIR re-checks ownership on every call.
+     *
+     * @return array{0: DomainName, 1: DnsService, 2: \Model_TldRegistrar}
+     */
+    private function dnsFor(\Model_ClientOrder $order): array
+    {
+        $service = $this->orderService()->getOrderService($order);
+        if (!$service instanceof \Model_ServiceDomain || $order->status !== \Model_ClientOrder::STATUS_ACTIVE) {
+            throw new InformationException('DNS is available for active domain orders only.');
+        }
+
+        $registrar = $this->registrar(self::int($service->tld_registrar_id));
+
+        $adapter = $this->domainService()->registrarGetRegistrarAdapter($registrar);
+        if ((bool) $registrar->test_mode || !$adapter instanceof \Registrar_Adapter_Osir) {
+            throw $this->dnsUnavailable(sprintf('DNS for order #%d: the OSIR registrar is in Test Mode or its adapter is missing.', self::int($order->id)));
+        }
+
+        try {
+            $dns = $adapter->dnsService();
+        } catch (OsirException $e) {
+            // Configuration messages name settings and files; they belong in the log, not in front
+            // of a client who can do nothing about them.
+            throw $this->dnsUnavailable(sprintf('DNS for order #%d is unavailable: %s', self::int($order->id), $e->getMessage()));
+        }
+
+        return [DomainName::fromParts(self::str($service->sld), self::str($service->tld)), $dns, $registrar];
+    }
+
+    /**
+     * Key for the one DNS call that is not naturally repeatable (adding a record): it makes the
+     * adapter's own retry of THIS submission safe. A fresh nonce each time is deliberate — OSIR
+     * remembers a key for 30 days, so a reused key would replay the first answer and a re-added
+     * record would never appear.
+     */
+    private function dnsKey(\Model_TldRegistrar $registrar, \Model_ClientOrder $order, DomainName $domain): ?string
+    {
+        $adapter = $this->domainService()->registrarGetRegistrarAdapter($registrar);
+        if (!$adapter instanceof \Registrar_Adapter_Osir) {
+            return null;
+        }
+
+        $scope = $adapter->keyScope();
+
+        return IdempotencyKeys::dnsRecord(
+            $scope['installation'],
+            $scope['environment'],
+            new OrderRef((string) self::int($order->id), null),
+            $domain,
+            bin2hex(random_bytes(6)),
+        );
+    }
+
+    /** One OSIR call's worth of records, cached per order and registrar configuration. */
+    private function dnsCacheKey(\Model_TldRegistrar $registrar, \Model_ClientOrder $order): string
+    {
+        return 'osir_dns_' . self::fingerprint($registrar) . '_o' . self::int($order->id);
+    }
+
+    /** Logs the real reason and shows the client one they can act on. */
+    private function dnsUnavailable(string $reason): InformationException
+    {
+        $this->log(\Box_Log::ERR, $reason);
+
+        return new InformationException('DNS management is not available for this domain right now. Please contact support.');
+    }
+
+    /**
+     * Turns the adapter's exceptions into FOSSBilling messages. Their text is written for end
+     * users and carries no secrets or raw upstream payloads.
+     *
+     * @template T
+     *
+     * @param \Closure(): T $operation
+     *
+     * @return T
+     */
+    private function guardOsir(\Closure $operation): mixed
+    {
+        try {
+            return $operation();
+        } catch (OsirException $e) {
+            throw new InformationException($e->getTemplate(), $e->getVariables());
+        }
     }
 
     // ------------------------------------------------------------------ registrar and OSIR access
