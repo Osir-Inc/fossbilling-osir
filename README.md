@@ -8,8 +8,8 @@ Register, transfer, renew and manage domains through [OSIR](https://osir.com) fr
 - Expiry synchronisation through FOSSBilling's cron
 - Refuses to run in FOSSBilling's **Test Mode**: OSIR has no test environment, so nothing is ever sent by mistake
 - `osir-doctor`, a read-only diagnostics command
-- **OSIR import** (System → OSIR import): import OSIR's TLDs with your markup, and turn domains already in your
-  OSIR account into FOSSBilling orders
+- **OSIR import** (System → OSIR import, part of the OSIR domains module): import OSIR's TLDs with your
+  markup, and turn domains already in your OSIR account into FOSSBilling orders
 - **DNS in the client area**: your clients manage the records of their OSIR-registered domains themselves
 
 ![OSIR import: TLDs priced from OSIR's quote plus your markup](docs/screenshots/admin-import-tlds.png)
@@ -49,28 +49,39 @@ FOSSBilling cannot install domain registrars from its extension directory yet, s
    ```
    library/Registrar/Adapter/Osir.php
    library/Registrar/Adapter/Osir/…
-   modules/Osir/…            (the optional "OSIR import" admin module)
+   modules/Osir/…            (the "OSIR domains" module: admin import + the client DNS page)
    ```
 3. In the admin panel, open **Domain Management → Registrars**, find **Osir** under the registrars available
    for installation and click **Install**.
 4. Configure it (see the next section).
-5. Optional: activate the **OSIR import** module under **Extensions** and use it to create your TLDs with
-   prices (see [Importing from OSIR](#importing-from-osir)). Otherwise, assign your TLDs to OSIR under
-   **Top-level domains** by hand.
-6. Run the diagnostics (see [Troubleshooting](#troubleshooting)).
+5. Activate the **OSIR domains** module under **Extensions**. It carries two things: the admin import
+   (see [Importing from OSIR](#importing-from-osir)) and the client-area
+   [DNS page](#dns-in-the-client-area). Without it the registrar still works, but there is no import and no DNS.
+   TLDs can also be assigned to OSIR by hand under **Top-level domains**.
+6. Optional: install the [OSIR theme](#optional-the-osir-client-theme), which is the only theme that links to
+   the DNS page out of the box. On another theme, add the link yourself (one line, see below).
+7. Run the diagnostics (see [Troubleshooting](#troubleshooting)).
 
 ### Upgrading
 
-Replace the adapter paths and `modules/Osir` with the new release's files. Coming from 1.0.x with Test Mode in use?
-Read the upgrade notes for 1.1.0 in `CHANGELOG.md` first. Settings are stored by FOSSBilling and are kept. Read
-`CHANGELOG.md` for anything that needs attention, then run `osir-doctor`.
+Replace the adapter paths and `modules/Osir` with the new release's files — delete `modules/Osir` first if your
+file manager will not merge folders, so that files removed in the new version do not linger. Settings are stored
+by FOSSBilling and are kept; there is no database migration.
+
+- **From 1.1.x:** the module gained the client-area DNS page. Nothing to configure, but the module must be
+  active (step 5 above) and, to link to it, the theme needs the snippet below or the OSIR theme 1.2.1+.
+- **From 1.0.x with Test Mode in use:** read the 1.1.0 upgrade notes in `CHANGELOG.md` first.
+
+If you use the OSIR theme, upgrade it from the same release so its version matches the plugin's. Then run
+`osir-doctor`.
 
 ### Uninstalling
 
 Move your TLDs to another registrar. FOSSBilling refuses to remove a registrar that still has TLDs or
-domains. Then remove the registrar under **Domain Management → Registrars**, deactivate the OSIR import module, delete the
-paths above, and
-remove the `osir` entry (or `OSIR_REGISTRAR_*` lines) from `config.php` if you added them. Domains stay registered at OSIR.
+domains. Then remove the registrar under **Domain Management → Registrars**, deactivate the OSIR domains module,
+delete the paths above, and remove the `osir` entry (or `OSIR_REGISTRAR_*` lines) from `config.php` if you added
+them. If your theme carries the DNS link, remove that too, or it points at a page that no longer exists. Domains
+stay registered at OSIR, with their DNS records.
 
 ## Configuration
 

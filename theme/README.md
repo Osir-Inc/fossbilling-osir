@@ -4,7 +4,10 @@ A client-area theme for FOSSBilling 0.8.7 in OSIR's design: violet for the one m
 Geist Mono (self-hosted), bordered white cards on a light grey page, mono labels for machine values, tinted status
 badges. The home page is a domain search with your TLD prices.
 
-It is optional and independent of the registrar plugin: it works with any FOSSBilling 0.8.7 installation.
+It is optional and independent of the registrar plugin: it works with any FOSSBilling 0.8.7 installation. One
+template is aware of the plugin: the domain management page has a **DNS** tab, which is simply a link. With the
+OSIR plugin installed it opens the customer's DNS records; without it the tab is a dead link, so remove it from
+`html/mod_servicedomain_manage.html.twig` if you use the theme on its own.
 
 ## Install
 
@@ -32,6 +35,8 @@ Built on FOSSBilling's Huraga theme; only these differ from Huraga 0.8.7:
 - `html/partial_company_logo.html.twig`: mark + name when no logo image is set
 - `html/partial_menu.html.twig`: account balance label
 - `html/mod_index_dashboard.html.twig`: home page with domain search (uses the stock order form's `?name=&tld=` prefill)
+- `html/mod_servicedomain_manage.html.twig`: FOSSBilling 0.8.7's domain page plus a **DNS** tab linking to the
+  OSIR plugin's client page (`/osir/dns/<order id>`); a module cannot add a tab to that page, so the link lives here
 - `config/settings.html.twig`, `config/settings_data.json`: no dark option; defaults (logo on, showcase off)
 
 Dark mode is off until a dark palette is designed. Small labels use `#6a6d78` for WCAG AA contrast.
