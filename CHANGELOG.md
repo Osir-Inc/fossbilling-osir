@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-09-20
+
+### Added
+- The OSIR theme now links to the DNS page: the domain management page in the client area has a **DNS** tab
+  beside Nameservers. FOSSBilling's domain page cannot be extended by a module, so the link has to come from a
+  theme; `theme/osir/html/mod_servicedomain_manage.html.twig` is FOSSBilling 0.8.7's own template with that one
+  addition. On another theme, add the link yourself — the README has the snippet, and the DNS page works either
+  way.
+
 ## [1.2.0] - 2026-09-20
 
 ### Added

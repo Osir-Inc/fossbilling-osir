@@ -179,9 +179,11 @@ OSIR registrar. It is not shown for domains at another registrar.
 
 ### Linking to it from the domain page
 
-FOSSBilling's own domain page cannot be extended by a module, so add the link in your theme's
-`mod_servicedomain_manage.html.twig` (copy it from `modules/Servicedomain/templates/client/` into
-`themes/<your theme>/html/` if you have not already), inside the tab bar:
+The OSIR theme already does this: from 1.2.1 its domain page has a **DNS** tab beside Nameservers.
+
+On any other theme you add the link yourself, because FOSSBilling's domain page cannot be extended by a module.
+Copy `modules/Servicedomain/templates/client/mod_servicedomain_manage.html.twig` into
+`themes/<your theme>/html/` if you have not already, and put this in the tab bar:
 
 ```twig
 <a class="nav-link" href='{{ "osir/dns/#{order.id}"|url }}'>{{ 'DNS'|trans }}</a>
