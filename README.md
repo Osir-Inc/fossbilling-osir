@@ -18,8 +18,10 @@ Register, transfer, renew and manage domains through [OSIR](https://osir.com) fr
 |---|---|
 | ![Import existing domains](docs/screenshots/admin-import-domains.png) | ![Registrar settings](docs/screenshots/admin-registrar-settings.png) |
 | Import domains you already hold at OSIR | Registrar settings |
-| ![OSIR theme: storefront](docs/screenshots/storefront-home.png) | ![OSIR theme: domain management](docs/screenshots/client-domain.png) |
-| Optional OSIR theme: storefront | Optional OSIR theme: a customer's domain |
+| ![Client-area DNS](docs/screenshots/client-dns.png) | ![OSIR theme: domain management](docs/screenshots/client-domain.png) |
+| Customers manage their own DNS records | Domain management in the client area |
+| ![OSIR theme: storefront](docs/screenshots/storefront-home.png) | ![OSIR theme on a phone](docs/screenshots/storefront-mobile.png) |
+| Optional OSIR theme: storefront | The same storefront on a phone |
 
 **Downloads:** the [latest release](https://github.com/Osir-Inc/fossbilling-osir/releases/latest) has two zips under **Assets**: `osir-fossbilling-registrar-<version>.zip`
 (the plugin) and `osir-fossbilling-theme-<version>.zip` (the optional client theme), plus `SHA256SUMS`.
@@ -172,7 +174,9 @@ and domain management to import domains.
 ## DNS in the client area
 
 Clients manage the DNS records of a domain they hold through you at `/osir/dns/<order id>`: list, add, edit and
-delete A, AAAA, CNAME, MX, TXT, SRV, CAA, NS, PTR and NAPTR records. There is nothing to sell or invoice — the
+delete A, AAAA, CNAME, MX, TXT, SRV, CAA, NS, PTR and NAPTR records.
+
+![The DNS page in the client area: the zone's records, with the domain's own SOA and NS rows managed by OSIR](docs/screenshots/client-dns.png) There is nothing to sell or invoice — the
 page belongs to the domain order itself — and no extra setting: it uses the same API key as the registrar.
 
 What it enforces:
