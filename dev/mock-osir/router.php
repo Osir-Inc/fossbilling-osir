@@ -16,6 +16,7 @@ declare(strict_types=1);
  *
  * Magic domain labels drive scenarios:
  *   taken*   registered by someone else          premium*  premium name (4999.00 USD)
+ *   bargain* premium name that costs LESS than a standard one (0.86 USD), like numeric .xyz names
  *   outage*  availability check errors           mine*     already in the caller's account
  *   foreign* registered by ANOTHER OSIR customer (ownership endpoints answer 403 "not the owner")
  *
@@ -348,8 +349,10 @@ function available(array &$s, array $p): array
         return [200, ['domain' => $d, 'available' => false, 'message' => 'Error checking availability: EPP connection reset', 'reason' => null, 'premium' => false]];
     }
     $registered = isset($s['domains'][$d]) || str_starts_with($l, 'taken') || str_starts_with($l, 'mine') || str_starts_with($l, 'foreign');
-    $premium = str_starts_with($l, 'premium');
-    $price = $premium ? 499900 : 1000;
+    $premium = str_starts_with($l, 'premium') || str_starts_with($l, 'bargain');
+    // A "bargain" premium is cheaper than the standard price, which is what the registries do with
+    // numeric and other low-tier premium names.
+    $price = str_starts_with($l, 'bargain') ? 65 : ($premium ? 499900 : 1000);
 
     return [200, [
         'domain' => $d, 'available' => !$registered,
@@ -363,10 +366,11 @@ function available(array &$s, array $p): array
 function quote(array &$s, array $p, array $b, array $q): array
 {
     $years = (int) ($q['years'] ?? 1);
-    $premium = str_starts_with(label($p[0]), 'premium');
+    $label = label($p[0]);
+    $premium = str_starts_with($label, 'premium') || str_starts_with($label, 'bargain');
     $tld = substr($p[0], strrpos($p[0], '.') + 1);
     // Registry prices that differ from the catalog (.io) or carry a first-year promotion (.shop).
-    $standard = $premium ? 499900 : (['io' => 5000, 'shop' => 3000][$tld] ?? 1000);
+    $standard = str_starts_with($label, 'bargain') ? 65 : ($premium ? 499900 : (['io' => 5000, 'shop' => 3000][$tld] ?? 1000));
     $promo = $tld === 'shop' && $years === 1;          // first-year promotion: 0.99
     $per = $promo ? 99 : $standard;
 
@@ -380,9 +384,13 @@ function quote(array &$s, array $p, array $b, array $q): array
 function renewalQuote(array &$s, array $p, array $b, array $q): array
 {
     $years = (int) ($q['years'] ?? 1);
-    $total = 1000 * $years + 20 * $years + 30;
+    $label = label($p[0]);
+    $premium = str_starts_with($label, 'premium') || str_starts_with($label, 'bargain');
+    // Premium names renew at their own tier, which is the trap the "cheaper premium" rule guards.
+    $per = str_starts_with($label, 'bargain') ? 65 : ($premium ? 499900 : 1000);
+    $total = $per * $years + 20 * $years + 30;
 
-    return ok(['domain' => $p[0], 'renewalYears' => $years, 'renewalTotal' => 1000 * $years, 'icannFee' => 20 * $years, 'registrarFee' => 30, 'totalWithRestore' => $total, 'finalTotal' => $total, 'currency' => 'USD']);
+    return ok(['domain' => $p[0], 'renewalYears' => $years, 'renewalTotal' => $per * $years, 'icannFee' => 20 * $years, 'registrarFee' => 30, 'totalWithRestore' => $total, 'finalTotal' => $total, 'premium' => $premium, 'currency' => 'USD']);
 }
 
 function owned(array &$s, string $d, string $customer): ?array

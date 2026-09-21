@@ -332,6 +332,7 @@ final class ApiClientTest extends TestCase
             null,
             false,
             false,
+            false,
             'settings',
         );
         $http = (new ScriptedHttpClient())->envelope(200, []);

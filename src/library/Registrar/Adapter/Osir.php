@@ -99,6 +99,14 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
                     'multiOptions' => ['0' => 'No', '1' => 'Yes'],
                     'default' => '0',
                 ]],
+                'allow_cheaper_premium' => ['radio', [
+                    'label' => 'Allow premium domains that cost less than you charge',
+                    'description' => 'Premium domains are normally refused, because FOSSBilling sells them at your standard TLD price while the registry charges a different one. '
+                        . 'With Yes, a premium name is allowed when OSIR\'s price for it (fees included) is at or below what the order charges, so it can only ever earn more than it costs. '
+                        . 'The order must be in USD, the currency OSIR quotes in; anything else is refused. Renewals are checked the same way.',
+                    'multiOptions' => ['0' => 'No', '1' => 'Yes'],
+                    'default' => '0',
+                ]],
                 'debug_logging' => ['radio', [
                     'label' => 'Debug logging',
                     'description' => 'Log every OSIR request (method, path, status, duration). Request and response bodies are never logged.',
@@ -127,7 +135,10 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
 
             return match ($availability->state) {
                 AvailabilityState::Unknown => throw new RuleException('Could not check the availability of :domain right now. Please try again in a few minutes.', [':domain' => $name->unicode()]),
-                AvailabilityState::Available => $availability->premium
+                // A premium name is only refused here when the adapter would refuse it outright.
+                // With "allow cheaper premium" on, the decision needs the order's price, which does
+                // not exist yet at checkout, so it is made when the domain is actually registered.
+                AvailabilityState::Available => $availability->premium && !$this->allowsCheaperPremium()
                     ? throw new RuleException(':domain is a premium domain. Premium domains cannot be registered through this registrar.', [':domain' => $name->unicode()])
                     : true,
                 AvailabilityState::Registered => false,
@@ -394,6 +405,15 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
         assert($this->settings !== null);
 
         return ['installation' => $this->settings->installationId, 'environment' => $this->settings->environment];
+    }
+
+    /** Whether premium names may be registered when they cost less than they sell for. */
+    private function allowsCheaperPremium(): bool
+    {
+        $this->service();
+        assert($this->settings !== null);
+
+        return $this->settings->allowCheaperPremium;
     }
 
     private function unchangedBecauseGone(Registrar_Domain $domain, string $name, string $why): Registrar_Domain

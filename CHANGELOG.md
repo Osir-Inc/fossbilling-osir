@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-09-21
+
+### Added
+- **Optional: premium domains that cost less than you charge.** A new registrar setting, off by default, allows a
+  premium name when OSIR's price for it (fees included, for the period ordered) is at or below what the order
+  charges. Registries price some names below the standard price of their TLD — numeric `.xyz` names cost well
+  under a dollar — and refusing those was costing partners business for no benefit.
+  - Renewals are checked the same way, against the renewal quote, so a name sold cheaply in its first year
+    cannot renew above its selling price.
+  - Fails closed: an order in a currency other than USD (the currency OSIR quotes in), an operation without an
+    order, or a quote without a usable total is refused, as is any premium name while the setting is off.
+  - The cost limit, if set, still applies on top.
+  - At checkout the price is not known yet (there is no order until the customer buys), so with the setting on a
+    premium name is offered at your standard TLD price and the decision is made when it is registered.
+
 ## [1.2.1] - 2026-09-20
 
 ### Added

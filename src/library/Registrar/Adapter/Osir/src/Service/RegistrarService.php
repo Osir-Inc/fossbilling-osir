@@ -175,10 +175,7 @@ final class RegistrarService
             throw $this->notAvailable($domain);
         }
         if ($availability->state === AvailabilityState::Available) {
-            if ($availability->premium) {
-                throw new RuleException(':domain is a premium domain. Premium domains cannot be registered through this registrar.', [':domain' => $domain->unicode()]);
-            }
-            $this->assertWithinCostCap([[ApiRequest::get(ApiRequest::path(self::P_QUOTE, $domain), ['years' => $years])->unwrapped(), 'totalFees', null]], $years, $domain);
+            $this->assertWithinCostCap([[ApiRequest::get(ApiRequest::path(self::P_QUOTE, $domain), ['years' => $years])->unwrapped(), 'totalFees', null]], $years, $domain, $order, $availability->premium);
         }
         // Registered + order: the keyed request below is sent anyway. If this order registered the
         // name earlier (lost response), OSIR replays that success; otherwise OSIR refuses without charging.
@@ -265,7 +262,7 @@ final class RegistrarService
             // OSIR prices the grace payment on the registration basis; cap against the higher of both.
             $quotes[] = [ApiRequest::get(ApiRequest::path(self::P_QUOTE, $domain), ['years' => 1])->unwrapped(), 'totalFees', null];
         }
-        $this->assertWithinCostCap($quotes, $years, $domain);
+        $this->assertWithinCostCap($quotes, $years, $domain, $order);
 
         // The retry anchor is the ORDER's expiry: FOSSBilling moves it only after a successful renew
         // action, whereas the domain's expiry is overwritten by every sync. A retry after a sync thus
@@ -307,7 +304,7 @@ final class RegistrarService
         self::assertYears($years);
         $authCode = self::assertAuthCode($authCode);
         $registrant = ContactMapper::toRegistrant($contact, $this->contactExternalId($domain));
-        $this->assertWithinCostCap([[ApiRequest::get(ApiRequest::path(self::P_TRANSFER_QUOTE, $domain), ['years' => $years])->unwrapped(), 'totalFees', 'transferYears']], $years, $domain);
+        $this->assertWithinCostCap([[ApiRequest::get(ApiRequest::path(self::P_TRANSFER_QUOTE, $domain), ['years' => $years])->unwrapped(), 'totalFees', 'transferYears']], $years, $domain, $order);
 
         $body = [
             'domain' => $domain->ascii(),
@@ -535,6 +532,44 @@ final class RegistrarService
         return $e->getKind() === ApiErrorKind::Permission && str_contains(strtolower((string) $e->getUpstreamMessage()), 'not the owner');
     }
 
+
+    /**
+     * A premium name may only be bought when OSIR charges at most what FOSSBilling charges for it.
+     *
+     * Premium names are refused by default: FOSSBilling sells every name of a TLD at one price,
+     * while the registry prices a premium name differently, so the reseller can end up paying more
+     * than they charged. With "allow cheaper premium" on, that risk is removed by comparing the two
+     * directly — the sale price of this very order against OSIR's total for the same period.
+     *
+     * Anything that cannot be compared with certainty is refused: no order (so no sale price), or
+     * an order in a currency other than the one OSIR quotes in.
+     *
+     * @throws RuleException
+     */
+    private function assertPremiumSellsForMore(DomainName $domain, int $cost, ?OrderRef $order): void
+    {
+        $sale = $order?->priceInUsdCents();
+        if ($sale === null || $sale <= 0) {
+            $this->log->warning(sprintf('%s refused: premium name, and this order has no usable price in USD to compare against.', $domain));
+
+            throw new RuleException(
+                ':domain is a premium domain. It can only be processed when the order has a price in USD to compare with OSIR\'s, which this one does not.',
+                [':domain' => $domain->unicode()],
+            );
+        }
+
+        if ($cost > $sale) {
+            $this->log->warning(sprintf('%s refused: premium cost of %d cents is above the order price of %d cents.', $domain, $cost, $sale));
+
+            throw new RuleException(
+                ':domain is a premium domain and OSIR charges more for it than this order sells it for, so it was not processed. Please contact support.',
+                [':domain' => $domain->unicode()],
+            );
+        }
+
+        $this->log->info(sprintf('%s: premium name allowed, OSIR cost %d cents is at or below the order price of %d cents.', $domain, $cost, $sale));
+    }
+
     /**
      * Refuses when OSIR's quote for this operation exceeds the configured cap. With several quotes
      * the highest total counts. Fails closed on any doubt — missing or non-positive total, premium
@@ -542,10 +577,15 @@ final class RegistrarService
      *
      * @param list<array{0: ApiRequest, 1: string, 2: string|null}> $quotes request, total field, period field
      */
-    private function assertWithinCostCap(array $quotes, int $years, DomainName $domain): void
+    private function assertWithinCostCap(array $quotes, int $years, DomainName $domain, ?OrderRef $order = null, bool $premium = false): void
     {
+        if ($premium && !$this->settings->allowCheaperPremium) {
+            // Refused on the availability answer alone: no quote is needed, and none is fetched.
+            throw new RuleException(':domain is a premium domain. Premium domains cannot be registered through this registrar.', [':domain' => $domain->unicode()]);
+        }
+
         $cap = $this->settings->maxYearlyCostCents;
-        if ($cap === null) {
+        if ($cap === null && !$this->settings->allowCheaperPremium) {
             return;
         }
 
@@ -554,9 +594,10 @@ final class RegistrarService
             $quote = $this->api->send($request)->data;
             $total = $quote[$totalField] ?? null;
             $quotedYears = $yearsField === null ? $years : ($quote[$yearsField] ?? null);
+            $isPremium = $premium || ($quote['premium'] ?? false) === true;
             $doubtful = !is_int($total)
                 || $total <= 0
-                || ($quote['premium'] ?? false) === true
+                || ($isPremium && !$this->settings->allowCheaperPremium)
                 || !is_int($quotedYears) || $quotedYears < 1
                 || ($yearsField !== null && $quotedYears !== $years)
                 || (is_string($quote['warning'] ?? null) && trim($quote['warning']) !== '');
@@ -565,10 +606,13 @@ final class RegistrarService
 
                 throw new RuleException('Could not confirm the price of :domain, so it was not processed. Please contact support.', [':domain' => $domain->unicode()]);
             }
+            if ($isPremium) {
+                $this->assertPremiumSellsForMore($domain, $total, $order);
+            }
             $perYear = max($perYear, intdiv($total + $quotedYears - 1, $quotedYears));
         }
 
-        if ($perYear > $cap) {
+        if ($cap !== null && $perYear > $cap) {
             $this->log->warning(sprintf('%s refused: OSIR cost of %d cents per year exceeds the configured cap of %d cents per year.', $domain, $perYear, $cap));
 
             throw new RuleException('The current price of :domain is above the limit set by the administrator, so it was not processed. Please contact support.', [':domain' => $domain->unicode()]);

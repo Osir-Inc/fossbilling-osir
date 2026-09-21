@@ -785,6 +785,40 @@ scenario('23', 'Client DNS tab: only your own domain, and never the zone apex', 
     @unlink($jar);
 }, ['21']);
 
+scenario('24', 'Premium names: refused by default, allowed only when they cost less than they sell for', function () use (&$registrarId, &$clientId, $suffix): void {
+    $bargain = "bargain-$suffix";          // premium at OSIR, 0.86 USD — cheaper than a standard .com
+    $expensive = "premium-x-$suffix";      // premium at OSIR, 4999.00 USD
+
+    // Default: both refused before anything is quoted.
+    $mark = requestCount();
+    [, $off] = orderDomain($clientId, ['action' => 'register', 'register_sld' => $bargain, 'register_tld' => '.com', 'register_years' => 1]);
+    check($off !== null && str_contains($off, 'premium'), 'a cheap premium name is refused while the setting is off', (string) $off);
+    check(only(requestsSince($mark), 'POST', '#/register$#') === [], 'nothing was registered');
+
+    fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['allow_cheaper_premium' => '1']]);
+    try {
+        $mark = requestCount();
+        [$order, $error] = orderDomain($clientId, ['action' => 'register', 'register_sld' => $bargain, 'register_tld' => '.com', 'register_years' => 1]);
+        check($error === null, 'with the setting on, the cheap premium name is registered', (string) $error);
+        check(isset(mock('state')['domains']["$bargain.com"]), 'the domain exists at OSIR');
+        $sold = (float) fbOk('order/get', ['id' => (int) $order])['price'];
+        check($sold > 0.86, sprintf('it sells for more than it cost (%.2f sold vs 0.86 cost)', $sold));
+
+        // The expensive one is still refused, by the same rule.
+        [, $tooDear] = orderDomain($clientId, ['action' => 'register', 'register_sld' => $expensive, 'register_tld' => '.com', 'register_years' => 1]);
+        check($tooDear !== null && str_contains($tooDear, 'more for it than this order sells it for'), 'an expensive premium name is still refused', (string) $tooDear);
+        check(!isset(mock('state')['domains']["$expensive.com"]), 'and it was not registered');
+
+        // Renewal uses the same comparison, against the renewal quote.
+        [, $renewError] = fb('order/renew', ['id' => (int) $order]);
+        check($renewError === null, 'the cheap premium name renews too', (string) $renewError);
+        $renewals = only(requestsSince($mark), 'POST', '#^/v2/domains/[^/]+/renew$#');
+        check(count($renewals) === 1, 'exactly one renewal call');
+    } finally {
+        fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['allow_cheaper_premium' => '0']]);
+    }
+}, ['2']);
+
 $total = $passes + $failures;
 echo "\n" . ($failures === 0 ? "\033[32mALL $total CHECKS PASSED\033[0m" : "\033[31m$failures OF $total CHECKS FAILED\033[0m") . "\n";
 exit($failures === 0 ? 0 : 1);

@@ -102,7 +102,33 @@ final class FossBillingMapper
         $expires = method_exists($order, 'getExpiresAt') ? $order->getExpiresAt() : ($order->expires_at ?? null);
         $status = method_exists($order, 'getStatus') ? $order->getStatus() : ($order->status ?? null);
 
-        return new OrderRef((string) $id, self::timestamp($created), self::timestamp($expires), is_string($status) ? $status : null);
+        $price = method_exists($order, 'getPrice') ? $order->getPrice() : ($order->price ?? null);
+        $currency = method_exists($order, 'getCurrency') ? $order->getCurrency() : ($order->currency ?? null);
+
+        return new OrderRef(
+            (string) $id,
+            self::timestamp($created),
+            self::timestamp($expires),
+            is_string($status) ? $status : null,
+            self::minorUnits($price),
+            is_string($currency) && $currency !== '' ? strtoupper($currency) : null,
+        );
+    }
+
+    /** FOSSBilling stores order prices as a decimal amount; OSIR quotes in cents. */
+    private static function minorUnits(mixed $price): ?int
+    {
+        if (is_string($price) && is_numeric($price)) {
+            $price = (float) $price;
+        }
+        if (!is_int($price) && !is_float($price)) {
+            return null;
+        }
+        if (!is_finite((float) $price) || $price < 0) {
+            return null;
+        }
+
+        return (int) round((float) $price * 100);
     }
 
     private static function timestamp(mixed $value): ?int

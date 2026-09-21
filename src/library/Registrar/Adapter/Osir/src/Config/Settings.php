@@ -18,6 +18,7 @@ final class Settings
      * @param string          $installationId          short stable identifier of this FOSSBilling install
      * @param int|null        $maxYearlyCostCents      refuse register/renew/transfer above this cost per year (USD cents)
      * @param bool            $initializeDnsZone       ask OSIR to create a DNS zone for new registrations
+     * @param bool            $allowCheaperPremium     register/renew premium names whose OSIR cost is at or below the order's own price
      * @param bool            $debug                   write request metadata (never bodies) to the log
      * @param string          $source                  where the API key came from, for diagnostics: "server" (constant/env) or "settings" (database)
      */
@@ -29,6 +30,7 @@ final class Settings
         public readonly string $installationId,
         public readonly ?int $maxYearlyCostCents,
         public readonly bool $initializeDnsZone,
+        public readonly bool $allowCheaperPremium,
         public readonly bool $debug,
         public readonly string $source,
     ) {}

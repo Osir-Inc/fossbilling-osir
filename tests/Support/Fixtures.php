@@ -21,7 +21,7 @@ final class Fixtures
     public const string TEST_KEY = 'osir_test_AbCdEfGhIjKlMnOpQrStUvWxYz012345';
     public const int NOW = 1789812000; // 2026-09-19T10:00:00Z
 
-    public static function settings(Environment $env = Environment::Live, ?int $maxYearlyCostCents = null, bool $dnsZone = false): Settings
+    public static function settings(Environment $env = Environment::Live, ?int $maxYearlyCostCents = null, bool $dnsZone = false, bool $allowCheaperPremium = false): Settings
     {
         return new Settings(
             environment: $env,
@@ -31,6 +31,7 @@ final class Fixtures
             installationId: 'abc123def456',
             maxYearlyCostCents: $maxYearlyCostCents,
             initializeDnsZone: $dnsZone,
+            allowCheaperPremium: $allowCheaperPremium,
             debug: true,
             source: 'settings',
         );
@@ -59,9 +60,9 @@ final class Fixtures
         );
     }
 
-    public static function order(string $id = '42', ?int $createdAt = self::NOW - 600, ?int $expiresAt = self::NOW + 30 * 86400): OrderRef
+    public static function order(string $id = '42', ?int $createdAt = self::NOW - 600, ?int $expiresAt = self::NOW + 30 * 86400, ?int $priceMinorUnits = null, ?string $currency = 'USD'): OrderRef
     {
-        return new OrderRef($id, $createdAt, $expiresAt);
+        return new OrderRef($id, $createdAt, $expiresAt, null, $priceMinorUnits, $currency);
     }
 
     public static function service(ScriptedHttpClient $http, ?Settings $settings = null, ?CapturingLogger $logger = null): RegistrarService

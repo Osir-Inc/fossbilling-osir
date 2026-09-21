@@ -99,6 +99,7 @@ final class SettingsResolver
             installationId: substr(hash('sha256', 'osir-fossbilling|' . $installationSeed), 0, 12),
             maxYearlyCostCents: self::parseMaxCost($config['max_yearly_cost'] ?? null),
             initializeDnsZone: self::parseBool($config['initialize_dns_zone'] ?? '0'),
+            allowCheaperPremium: self::parseBool($config['allow_cheaper_premium'] ?? '0'),
             debug: self::parseBool($config['debug_logging'] ?? '0'),
             source: $source,
         );

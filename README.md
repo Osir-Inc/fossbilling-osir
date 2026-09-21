@@ -122,6 +122,7 @@ settings: FOSSBilling 0.8.7 stores it in its database and never shows it again (
 |---|---|
 | API key | See above. Only live keys (`osir_live_…`) are accepted. |
 | Maximum cost per year (USD) | Optional safety limit. Before registering, renewing or transferring, the adapter asks OSIR for the price, including all fees. If the price per year is higher than this limit, or cannot be determined, nothing is charged and the order is left for an administrator. |
+| Allow premium domains that cost less than you charge | Off by default, and premium names are refused. With `Yes`, a premium name is allowed when OSIR's price for it, fees included, is at or below what the order charges — so it can only ever earn more than it costs. The order must be in USD, the currency OSIR quotes in. Renewals are checked the same way, against the renewal quote. See below. |
 | Create DNS zone at OSIR | `Yes` only if your domains use OSIR's nameservers. |
 | Debug logging | Logs every OSIR request: method, path, status, duration and a reference id. Request bodies and successful response bodies are never logged. Turn it off when you are not troubleshooting. |
 | Test Mode (FOSSBilling's own switch) | Keep it **off**. OSIR has no test environment, so while Test Mode is on the adapter refuses every operation and sends nothing to OSIR; the log says why (one line per refused action, including every customer domain search and every domain in each cron sync). To try the plugin, register one inexpensive domain for yourself. |
@@ -131,6 +132,30 @@ your admin panel cannot redirect your API key to another server. Two server-leve
 staging environments only. Do not set them in production:
 - `OSIR_REGISTRAR_API_URL` (https only);
 - `OSIR_REGISTRAR_CA_FILE`, which replaces the trusted certificate authorities for the API connection.
+
+## Premium domains
+
+Registries price some names above — and sometimes below — the standard price of their TLD. FOSSBilling sells
+every name of a TLD at one price, so by default this plugin refuses premium names: you would charge your
+standard price and pay whatever the registry asks.
+
+Some premium names are *cheaper* than a standard one, though. Numeric `.xyz` names, for example, can cost well
+under a dollar. Turning on **Allow premium domains that cost less than you charge** lets exactly those through:
+
+- Before registering, the adapter compares OSIR's price for the name (fees included, for the period ordered)
+  with what the order charges. At or below it, the registration goes ahead; above it, the order is refused and
+  left for an administrator.
+- **Renewals use the same comparison**, against OSIR's renewal quote. This matters: a name sold cheaply in the
+  first year can renew at the premium tier, and without the check the renewal would simply cost you more than
+  you charge.
+- The comparison needs the order's own price in **USD**, the currency OSIR quotes in. An order in another
+  currency is refused, because the adapter has no exchange rate; so is an operation with no order behind it.
+- Your **cost limit**, if set, still applies on top: both have to be satisfied.
+
+At checkout the customer only sees the availability answer, where the price is not yet known (there is no order
+until they buy). With the setting on, a premium name is therefore offered at your standard TLD price and the
+real decision happens at registration; if it is refused there, the order waits for an administrator instead of
+being charged.
 
 ## Importing from OSIR
 
@@ -214,7 +239,7 @@ See [theme/README.md](theme/README.md).
 
 | FOSSBilling action | What happens at OSIR |
 |---|---|
-| Domain search / checkout | Live availability check. **Premium names are refused**: FOSSBilling has no premium pricing, so you would sell at the standard price while paying the premium price. If the check cannot be completed, the customer is asked to retry; such a check is never reported as "available" or "taken". |
+| Domain search / checkout | Live availability check. **Premium names are refused** unless "allow premium domains that cost less than you charge" is on (see [Premium domains](#premium-domains)): FOSSBilling has no premium pricing, so you would otherwise sell at the standard price while paying the premium price. If the check cannot be completed, the customer is asked to retry; such a check is never reported as "available" or "taken". |
 | Order activation (register) | The registrant contact is validated first. An incomplete contact (name, address, city, country, e-mail or phone missing) stops the registration with a clear message. Then the price is checked (if you set a limit), and the domain is registered with your nameservers. OSIR's own auto-renew is switched off, because FOSSBilling owns the renewal cycle. |
 | Order activation (transfer) | Starts the transfer with the auth code the customer entered. While the transfer is pending, syncs report "pending transfer". A wrong auth code is reported as such. |
 | Renewal | The registry state is read first. See [Renewals](#renewals). |
@@ -266,7 +291,8 @@ right away. For a change of the legal registrant (ownership), contact OSIR suppo
 - **Renewals are guarded twice.** They are protected against being applied twice (even when a sync happened in
   between), and against being skipped when the registry auto-renewed (see above).
 - **Prices are checked before anything is charged.** Premium registrations are refused, and so is any price
-  above your **cost limit**. With a cost limit set, premium renewal and transfer prices are refused too.
+  above your **cost limit**. Premium renewal and transfer prices are refused too, unless they pass the
+  [premium rule](#premium-domains).
 
 ## Data sent to OSIR
 
