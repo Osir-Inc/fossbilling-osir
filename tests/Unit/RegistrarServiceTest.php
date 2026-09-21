@@ -285,77 +285,80 @@ final class RegistrarServiceTest extends TestCase
 
     // ------------------------------------------------------------------ premium names
 
-    /**
-     * The point of the setting: a premium name that costs less than the order charges is a better
-     * deal than a standard one, so it may be registered.
-     */
-    public function testCheaperPremiumIsRegisteredWhenAllowed(): void
+    /** The whole point: a premium name priced under the administrator's limit may be registered. */
+    public function testPremiumWithinTheCostLimitIsRegistered(): void
     {
         $http = (new ScriptedHttpClient())
             ->json(200, self::available(['premium' => true, 'totalPrice' => 86]))
             ->json(200, ['domain' => 'example.com', 'totalFees' => 86, 'premium' => true])
             ->envelope(200, ['domain' => 'example.com', 'expirationDate' => '2027-09-19T10:00:00Z']);
 
-        $order = Fixtures::order(priceMinorUnits: 1199, currency: 'USD');
-        self::assertTrue(Fixtures::service($http, Fixtures::settings(allowCheaperPremium: true))->register(self::domain(), 1, self::ns(), Fixtures::contact(), $order));
+        self::assertTrue(Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 200, allowCheaperPremium: true))
+            ->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order()));
         self::assertSame('POST', $http->last()->method, 'the registration is sent');
     }
 
-    public function testPremiumCostingMoreThanTheOrderIsStillRefused(): void
+    public function testPremiumAboveTheCostLimitIsRefused(): void
     {
         $http = (new ScriptedHttpClient())
-            ->json(200, self::available(['premium' => true]))
-            ->json(200, ['domain' => 'example.com', 'totalFees' => 25000, 'premium' => true]);
+            ->json(200, self::available(['premium' => true, 'totalPrice' => 499900]))
+            ->json(200, ['domain' => 'example.com', 'totalFees' => 499900, 'premium' => true]);
 
-        $order = Fixtures::order(priceMinorUnits: 1199, currency: 'USD');
         $this->expectException(RuleException::class);
-        $this->expectExceptionMessage('charges more for it than this order sells it for');
+        $this->expectExceptionMessage('above the limit');
         try {
-            Fixtures::service($http, Fixtures::settings(allowCheaperPremium: true))->register(self::domain(), 1, self::ns(), Fixtures::contact(), $order);
+            Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 200, allowCheaperPremium: true))
+                ->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order());
         } finally {
-            self::assertCount(2, $http->requests, 'no register call');
+            foreach ($http->requests as $request) {
+                self::assertSame('GET', $request->method, 'nothing is registered');
+            }
         }
     }
 
-    /** OSIR quotes in USD; another currency would need an exchange rate the adapter does not have. */
-    public function testPremiumIsRefusedWhenTheOrderIsNotInUsd(): void
+    /** Without a limit there is nothing to judge a premium price against, so it stays refused. */
+    public function testPremiumIsRefusedWhenNoCostLimitIsSet(): void
     {
-        $http = (new ScriptedHttpClient())
-            ->json(200, self::available(['premium' => true]))
-            ->json(200, ['domain' => 'example.com', 'totalFees' => 86, 'premium' => true]);
+        $http = (new ScriptedHttpClient())->json(200, self::available(['premium' => true, 'totalPrice' => 86]));
 
-        $order = Fixtures::order(priceMinorUnits: 1199, currency: 'EUR');
         $this->expectException(RuleException::class);
-        $this->expectExceptionMessage('price in USD');
+        $this->expectExceptionMessage('Premium domains cannot be registered');
         try {
-            Fixtures::service($http, Fixtures::settings(allowCheaperPremium: true))->register(self::domain(), 1, self::ns(), Fixtures::contact(), $order);
+            Fixtures::service($http, Fixtures::settings(allowCheaperPremium: true))->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order());
         } finally {
-            self::assertCount(2, $http->requests, 'no register call');
+            self::assertCount(1, $http->requests, 'no quote is fetched');
         }
     }
 
-    public function testPremiumIsRefusedWithoutAnOrderToCompareWith(): void
+    /**
+     * The customer pays before the name is registered, so an unaffordable premium name must not be
+     * offered at all: the alternative is a paid invoice for an order that can never be activated.
+     */
+    public function testPremiumAboveTheLimitIsNotEvenOfferedAtCheckout(): void
     {
-        $http = (new ScriptedHttpClient())
-            ->json(200, self::available(['premium' => true]))
-            ->json(200, ['domain' => 'example.com', 'totalFees' => 86, 'premium' => true]);
+        $http = (new ScriptedHttpClient())->json(200, self::available(['premium' => true, 'totalPrice' => 499900]));
 
         $this->expectException(RuleException::class);
-        $this->expectExceptionMessage('price in USD');
-        Fixtures::service($http, Fixtures::settings(allowCheaperPremium: true))->register(self::domain(), 1, self::ns(), Fixtures::contact(), null);
+        $this->expectExceptionMessage('priced above the limit');
+        Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 200, allowCheaperPremium: true))->checkAvailability(self::domain());
     }
 
-    /** The cost cap still applies on top: both limits have to be satisfied. */
-    public function testCheaperPremiumStillObeysTheCostCap(): void
+    public function testPremiumWithoutAPriceIsNotOfferedEither(): void
     {
-        $http = (new ScriptedHttpClient())
-            ->json(200, self::available(['premium' => true]))
-            ->json(200, ['domain' => 'example.com', 'totalFees' => 2000, 'premium' => true]);
+        $http = (new ScriptedHttpClient())->json(200, self::available(['premium' => true, 'totalPrice' => null]));
 
-        $order = Fixtures::order(priceMinorUnits: 5000, currency: 'USD');
         $this->expectException(RuleException::class);
-        $this->expectExceptionMessage('above the limit set by the administrator');
-        Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 1500, allowCheaperPremium: true))->register(self::domain(), 1, self::ns(), Fixtures::contact(), $order);
+        $this->expectExceptionMessage('priced above the limit');
+        Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 200, allowCheaperPremium: true))->checkAvailability(self::domain());
+    }
+
+    public function testAffordablePremiumIsOfferedAtCheckout(): void
+    {
+        $http = (new ScriptedHttpClient())->json(200, self::available(['premium' => true, 'totalPrice' => 86]));
+
+        $availability = Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 200, allowCheaperPremium: true))->checkAvailability(self::domain());
+        self::assertTrue($availability->premium);
+        self::assertSame(86, $availability->totalPriceCents);
     }
 
     /** With the setting off nothing changes: no quote is fetched and the name is refused. */
@@ -366,7 +369,7 @@ final class RegistrarServiceTest extends TestCase
         $this->expectException(RuleException::class);
         $this->expectExceptionMessage('Premium domains cannot be registered');
         try {
-            Fixtures::service($http)->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order(priceMinorUnits: 1199));
+            Fixtures::service($http)->register(self::domain(), 1, self::ns(), Fixtures::contact(), Fixtures::order());
         } finally {
             self::assertCount(1, $http->requests, 'the quote is not even fetched');
         }
@@ -551,37 +554,52 @@ final class RegistrarServiceTest extends TestCase
     }
 
     /**
-     * The renewal is where a premium name usually hurts: a first year sold cheaply can renew at the
-     * premium tier. The same comparison applies, against the renewal quote.
+     * Renewal is where a premium name usually hurts: a name sold cheaply in its first year can
+     * renew at the premium tier. The cost limit is checked there too, against the renewal quote.
      */
-    public function testCheaperPremiumRenewalIsAllowed(): void
+    public function testPremiumRenewalWithinTheCostLimitIsAllowed(): void
     {
         $http = (new ScriptedHttpClient())
             ->envelope(200, Fixtures::info())
-            ->envelope(200, ['domain' => 'example.com', 'renewalYears' => 1, 'totalWithRestore' => 900, 'premium' => true, 'finalTotal' => 1])
+            ->envelope(200, ['domain' => 'example.com', 'renewalYears' => 1, 'totalWithRestore' => 115, 'premium' => true, 'finalTotal' => 1])
             ->envelope(200, ['domain' => 'example.com', 'expirationDate' => '2028-09-19T10:00:00Z']);
 
-        $order = Fixtures::order('7', priceMinorUnits: 1199, currency: 'USD');
-        self::assertTrue(Fixtures::service($http, Fixtures::settings(allowCheaperPremium: true))->renew(self::domain(), 1, self::ymd('2027-09-19'), $order));
+        self::assertTrue(Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 200, allowCheaperPremium: true))
+            ->renew(self::domain(), 1, self::ymd('2027-09-19'), Fixtures::order('7')));
         self::assertSame('POST', $http->last()->method, 'the renewal is sent');
     }
 
-    public function testPremiumRenewalAboveTheOrderPriceIsRefused(): void
+    /** The trap this guards: cheap to register, premium to renew. */
+    public function testPremiumRenewalAboveTheCostLimitIsRefused(): void
     {
         $http = (new ScriptedHttpClient())
             ->envelope(200, Fixtures::info())
-            ->envelope(200, ['domain' => 'example.com', 'renewalYears' => 1, 'totalWithRestore' => 25000, 'premium' => true, 'finalTotal' => 1]);
+            ->envelope(200, ['domain' => 'example.com', 'renewalYears' => 1, 'totalWithRestore' => 499900, 'premium' => true, 'finalTotal' => 1]);
 
-        $order = Fixtures::order('7', priceMinorUnits: 1199, currency: 'USD');
         $this->expectException(RuleException::class);
-        $this->expectExceptionMessage('charges more for it than this order sells it for');
+        $this->expectExceptionMessage('above the limit');
         try {
-            Fixtures::service($http, Fixtures::settings(allowCheaperPremium: true))->renew(self::domain(), 1, self::ymd('2027-09-19'), $order);
+            Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 200, allowCheaperPremium: true))->renew(self::domain(), 1, self::ymd('2027-09-19'), Fixtures::order('7'));
         } finally {
             foreach ($http->requests as $request) {
                 self::assertNotSame('/v2/domains/example.com/renew', $request->path(), 'nothing is renewed');
             }
         }
+    }
+
+    /**
+     * A premium renewal is bounded by the limit even when OSIR does not flag it as premium — the
+     * flag is not published in OSIR's API contract, so nothing may depend on it.
+     */
+    public function testAnExpensiveRenewalIsRefusedEvenWithoutAPremiumFlag(): void
+    {
+        $http = (new ScriptedHttpClient())
+            ->envelope(200, Fixtures::info())
+            ->envelope(200, ['domain' => 'example.com', 'renewalYears' => 1, 'totalWithRestore' => 499900, 'finalTotal' => 1]);
+
+        $this->expectException(RuleException::class);
+        $this->expectExceptionMessage('above the limit');
+        Fixtures::service($http, Fixtures::settings(maxYearlyCostCents: 200, allowCheaperPremium: true))->renew(self::domain(), 1, self::ymd('2027-09-19'), Fixtures::order('7'));
     }
 
     public function testRenewCostCapUsesRenewalQuoteAndChecksItsPeriod(): void

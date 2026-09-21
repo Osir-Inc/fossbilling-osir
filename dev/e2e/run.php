@@ -785,37 +785,50 @@ scenario('23', 'Client DNS tab: only your own domain, and never the zone apex', 
     @unlink($jar);
 }, ['21']);
 
-scenario('24', 'Premium names: refused by default, allowed only when they cost less than they sell for', function () use (&$registrarId, &$clientId, $suffix): void {
-    $bargain = "bargain-$suffix";          // premium at OSIR, 0.86 USD — cheaper than a standard .com
+scenario('24', 'Premium names: refused by default, allowed only within the cost limit', function () use (&$registrarId, &$clientId, $suffix): void {
+    $bargain = "bargain-$suffix";          // premium at OSIR, 0.86 USD to register and to renew
     $expensive = "premium-x-$suffix";      // premium at OSIR, 4999.00 USD
+    $trap = "trap-$suffix";                // 0.86 USD to register, 4999.00 USD to renew, no premium flag
 
-    // Default: both refused before anything is quoted.
+    // Default: refused before anything is quoted.
     $mark = requestCount();
     [, $off] = orderDomain($clientId, ['action' => 'register', 'register_sld' => $bargain, 'register_tld' => '.com', 'register_years' => 1]);
     check($off !== null && str_contains($off, 'premium'), 'a cheap premium name is refused while the setting is off', (string) $off);
     check(only(requestsSince($mark), 'POST', '#/register$#') === [], 'nothing was registered');
 
-    fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['allow_cheaper_premium' => '1']]);
+    // Turned on but with no cost limit: still refused, because there is nothing to judge the price by.
+    fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['allow_cheaper_premium' => '1', 'max_yearly_cost' => '']]);
+    [, $noCap] = orderDomain($clientId, ['action' => 'register', 'register_sld' => $bargain, 'register_tld' => '.com', 'register_years' => 1]);
+    check($noCap !== null && str_contains($noCap, 'premium'), 'without a cost limit a premium name is still refused', (string) $noCap);
+
+    fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['allow_cheaper_premium' => '1', 'max_yearly_cost' => '2']]);
     try {
         $mark = requestCount();
         [$order, $error] = orderDomain($clientId, ['action' => 'register', 'register_sld' => $bargain, 'register_tld' => '.com', 'register_years' => 1]);
-        check($error === null, 'with the setting on, the cheap premium name is registered', (string) $error);
+        check($error === null, 'within the limit, the cheap premium name is registered', (string) $error);
         check(isset(mock('state')['domains']["$bargain.com"]), 'the domain exists at OSIR');
-        $sold = (float) fbOk('order/get', ['id' => (int) $order])['price'];
-        check($sold > 0.86, sprintf('it sells for more than it cost (%.2f sold vs 0.86 cost)', $sold));
 
-        // The expensive one is still refused, by the same rule.
+        // Above the limit: refused, and not even offered to the customer.
         [, $tooDear] = orderDomain($clientId, ['action' => 'register', 'register_sld' => $expensive, 'register_tld' => '.com', 'register_years' => 1]);
-        check($tooDear !== null && str_contains($tooDear, 'more for it than this order sells it for'), 'an expensive premium name is still refused', (string) $tooDear);
+        check($tooDear !== null && str_contains($tooDear, 'above the limit'), 'an expensive premium name is refused at checkout', (string) $tooDear);
         check(!isset(mock('state')['domains']["$expensive.com"]), 'and it was not registered');
+        check(only(requestsSince($mark), 'POST', '#/register$#') !== [] && count(only(requestsSince($mark), 'POST', '#/register$#')) === 1, 'exactly one registration in this block');
 
-        // Renewal uses the same comparison, against the renewal quote.
+        // The renewal trap: cheap to register, premium to renew, and OSIR does not flag it.
+        [$trapOrder, $trapError] = orderDomain($clientId, ['action' => 'register', 'register_sld' => $trap, 'register_tld' => '.com', 'register_years' => 1]);
+        check($trapError === null, 'a name that is cheap to register is registered', (string) $trapError);
+        $mark = requestCount();
+        [, $renewTrap] = fb('order/renew', ['id' => (int) $trapOrder]);
+        check($renewTrap !== null && str_contains($renewTrap, 'above the limit'), 'its expensive renewal is refused by the cost limit', (string) $renewTrap);
+        check(only(requestsSince($mark), 'POST', '#^/v2/domains/[^/]+/renew$#') === [], 'nothing was renewed');
+
+        // And a genuinely cheap renewal still goes through.
+        $mark = requestCount();
         [, $renewError] = fb('order/renew', ['id' => (int) $order]);
-        check($renewError === null, 'the cheap premium name renews too', (string) $renewError);
-        $renewals = only(requestsSince($mark), 'POST', '#^/v2/domains/[^/]+/renew$#');
-        check(count($renewals) === 1, 'exactly one renewal call');
+        check($renewError === null, 'the cheap premium name renews', (string) $renewError);
+        check(count(only(requestsSince($mark), 'POST', '#^/v2/domains/[^/]+/renew$#')) === 1, 'exactly one renewal call');
     } finally {
-        fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['allow_cheaper_premium' => '0']]);
+        fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['allow_cheaper_premium' => '0', 'max_yearly_cost' => '']]);
     }
 }, ['2']);
 

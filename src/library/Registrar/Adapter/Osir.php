@@ -100,10 +100,10 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
                     'default' => '0',
                 ]],
                 'allow_cheaper_premium' => ['radio', [
-                    'label' => 'Allow premium domains that cost less than you charge',
+                    'label' => 'Allow premium domains within the cost limit',
                     'description' => 'Premium domains are normally refused, because FOSSBilling sells them at your standard TLD price while the registry charges a different one. '
-                        . 'With Yes, a premium name is allowed when OSIR\'s price for it (fees included) is at or below what the order charges, so it can only ever earn more than it costs. '
-                        . 'The order must be in USD, the currency OSIR quotes in; anything else is refused. Renewals are checked the same way.',
+                        . 'With Yes, and a maximum cost per year set above, a premium name is allowed as long as OSIR\'s price stays within that limit — at checkout, at registration, and at renewal or transfer. '
+                        . 'Set the limit at or below what you charge for the TLD. Without a limit this setting changes nothing.',
                     'multiOptions' => ['0' => 'No', '1' => 'Yes'],
                     'default' => '0',
                 ]],
@@ -135,9 +135,8 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
 
             return match ($availability->state) {
                 AvailabilityState::Unknown => throw new RuleException('Could not check the availability of :domain right now. Please try again in a few minutes.', [':domain' => $name->unicode()]),
-                // A premium name is only refused here when the adapter would refuse it outright.
-                // With "allow cheaper premium" on, the decision needs the order's price, which does
-                // not exist yet at checkout, so it is made when the domain is actually registered.
+                // With premium names allowed within the cost limit, the service has already checked
+                // this one's price against that limit, so anything that arrives here may be sold.
                 AvailabilityState::Available => $availability->premium && !$this->allowsCheaperPremium()
                     ? throw new RuleException(':domain is a premium domain. Premium domains cannot be registered through this registrar.', [':domain' => $name->unicode()])
                     : true,

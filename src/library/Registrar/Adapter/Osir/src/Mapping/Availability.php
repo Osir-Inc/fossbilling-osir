@@ -25,6 +25,8 @@ final class Availability
     private function __construct(
         public readonly AvailabilityState $state,
         public readonly bool $premium,
+        /** OSIR's price for one year including fees, in USD cents; null when it did not quote one. */
+        public readonly ?int $totalPriceCents = null,
     ) {}
 
     /** @param array<array-key, mixed> $data */
@@ -34,26 +36,28 @@ final class Availability
             throw new ApiException(ApiErrorKind::Protocol, 200, null, 'Availability response lacks "available".', $requestId);
         }
         $premium = ($data['premium'] ?? false) === true;
+        $total = $data['totalPrice'] ?? null;
+        $totalCents = is_int($total) && $total > 0 ? $total : null;
         if ($data['available'] === true) {
-            return new self(AvailabilityState::Available, $premium);
+            return new self(AvailabilityState::Available, $premium, $totalCents);
         }
 
         $message = strtolower(is_string($data['message'] ?? null) ? $data['message'] : '');
         $reason = is_string($data['reason'] ?? null) ? trim($data['reason']) : '';
         foreach (self::FAILURE_MARKERS as $marker) {
             if (str_contains($message, $marker)) {
-                return new self(AvailabilityState::Unknown, $premium);
+                return new self(AvailabilityState::Unknown, $premium, $totalCents);
             }
         }
         if ($reason !== '') {
-            return new self(AvailabilityState::Registered, $premium);
+            return new self(AvailabilityState::Registered, $premium, $totalCents);
         }
         foreach (self::REGISTERED_MARKERS as $marker) {
             if (str_contains($message, $marker)) {
-                return new self(AvailabilityState::Registered, $premium);
+                return new self(AvailabilityState::Registered, $premium, $totalCents);
             }
         }
 
-        return new self(AvailabilityState::Unknown, $premium);
+        return new self(AvailabilityState::Unknown, $premium, $totalCents);
     }
 }

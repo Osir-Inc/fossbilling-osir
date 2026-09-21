@@ -4,7 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-09-21
+
+### Changed
+- **The premium rule from 1.3.0 is replaced.** It compared OSIR's price with `client_order.price`, which cannot
+  carry that meaning: FOSSBilling writes that column once, at order creation, as the *registration* total and
+  never updates it for renewals (which are invoiced from the TLD's renewal price), and it is the price *before*
+  `client_order.discount` — so a free-with-hosting or promo-code order compared against money the customer
+  never paid. A premium name could therefore renew, or be registered, for more than it sold for.
+  The setting is now **"Allow premium domains within the cost limit"**: premium names are allowed only when a
+  maximum cost per year is also set, and only while OSIR's price stays inside it — checked at checkout, at
+  registration, and at renewal and transfer alike. The limit is a number the administrator controls, so it
+  cannot drift out of step with anything.
+- Premium names are also checked **before** they reach the cart: one priced above the limit is no longer shown
+  as available. In 1.3.0 a customer could pay for a premium name that registration then refused, leaving a paid
+  invoice and an order only an administrator could clear.
+- The rule no longer depends on OSIR flagging a quote as `premium`. That field is not part of OSIR's published
+  API contract, so a premium renewal that arrived unflagged would have passed unchecked; the cost limit now
+  bounds every quote regardless.
+
+### Upgrading from 1.3.0
+- If you turned the 1.3.0 setting on, **set a maximum cost per year as well** — otherwise premium names are
+  refused again. Check any premium name registered under 1.3.0: its renewal price may be above what you charge.
+
 ## [1.3.0] - 2026-09-21
+
+**Superseded by 1.3.1: the rule below does not hold. Do not enable the setting on this version.**
 
 ### Added
 - **Optional: premium domains that cost less than you charge.** A new registrar setting, off by default, allows a

@@ -60,9 +60,9 @@ final class Fixtures
         );
     }
 
-    public static function order(string $id = '42', ?int $createdAt = self::NOW - 600, ?int $expiresAt = self::NOW + 30 * 86400, ?int $priceMinorUnits = null, ?string $currency = 'USD'): OrderRef
+    public static function order(string $id = '42', ?int $createdAt = self::NOW - 600, ?int $expiresAt = self::NOW + 30 * 86400): OrderRef
     {
-        return new OrderRef($id, $createdAt, $expiresAt, null, $priceMinorUnits, $currency);
+        return new OrderRef($id, $createdAt, $expiresAt);
     }
 
     public static function service(ScriptedHttpClient $http, ?Settings $settings = null, ?CapturingLogger $logger = null): RegistrarService
