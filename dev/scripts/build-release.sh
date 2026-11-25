@@ -91,4 +91,41 @@ with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
 print(f"{out}: {len(entries)} files")
 PY
 
-( cd dist && sha256sum "$(basename "$OUT")" "$(basename "$THEME_OUT")" > SHA256SUMS && cat SHA256SUMS )
+# The ClientFence build of the same sources: ClientFence is a FOSSBilling fork whose registrar
+# contract is identical and whose framework classes are named differently (see make-clientfence.sh).
+dev/scripts/make-clientfence.sh --check >/dev/null
+CF_OUT="dist/osir-clientfence-registrar-${VERSION}.zip"
+python3 - "$CF_OUT" <<'PYCF'
+import os, sys, zipfile
+
+out = sys.argv[1]
+src = "build/clientfence"
+files = []
+for top in ("library", "modules"):
+    for base, dirs, names in os.walk(os.path.join(src, top)):
+        dirs.sort()
+        for n in sorted(names):
+            files.append(os.path.join(base, n))
+docs = {  # repository file -> path inside the archive
+    "README.md": "library/Registrar/Adapter/Osir/README.md",
+    "LICENSE": "library/Registrar/Adapter/Osir/LICENSE",
+    "CHANGELOG.md": "library/Registrar/Adapter/Osir/CHANGELOG.md",
+    "SECURITY.md": "library/Registrar/Adapter/Osir/SECURITY.md",
+}
+entries = sorted([(os.path.relpath(f, src), f) for f in files] + [(dst, srcf) for srcf, dst in docs.items()])
+for arc, _ in entries:
+    assert arc.startswith(("library/Registrar/Adapter/Osir", "modules/Osir/")), arc
+    assert "/." not in arc and not arc.endswith((".bak", ".orig")), arc
+
+with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+    for arc, path in entries:
+        info = zipfile.ZipInfo(arc, date_time=(1980, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o100644 << 16
+        info.create_system = 3
+        with open(path, "rb") as fh:
+            z.writestr(info, fh.read())
+print(f"{out}: {len(entries)} files")
+PYCF
+
+( cd dist && sha256sum "$(basename "$OUT")" "$(basename "$CF_OUT")" "$(basename "$THEME_OUT")" > SHA256SUMS && cat SHA256SUMS )

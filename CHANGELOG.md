@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-11-25
+
+### Added
+- **ClientFence is supported officially.** ClientFence is a fork of FOSSBilling whose registrar contract is
+  identical, so the release now carries `osir-clientfence-registrar-<version>.zip`, built from the same
+  sources with the framework class names rewritten (`Box\Mod\*`, `Box_App`, `Box_Database`, `Box_Log`,
+  `Box_Url`, `FOSSBilling\*` and the browser-side `FOSSBilling.api` helper). There is no second copy of the
+  plugin to drift: `dev/scripts/make-clientfence.sh` generates it and CI fails if a FOSSBilling-only name
+  survives or a generated file does not parse.
+  - Verified on ClientFence 1.0.62: the registrar installs and configures, the module activates, its admin
+    API answers, a catalogue read reaches OSIR over verified TLS, the client DNS route is registered, and
+    `osir-doctor` authenticates.
+  - Install only the registrar archive there. The OSIR theme is built on FOSSBilling's Huraga, which
+    ClientFence does not ship; use ClientFence's own theme and add the DNS link as the README describes.
+
+### Fixed
+- `osir-doctor` reports the platform's own version. ClientFence keeps `VERSION` on its FOSSBilling lineage
+  and numbers its releases separately, so the doctor was showing 0.8.8 to an administrator whose panel said
+  1.0.62.
+
 ## [1.3.4] - 2026-11-25
 
 ### Changed

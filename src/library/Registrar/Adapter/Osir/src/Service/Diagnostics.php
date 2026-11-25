@@ -29,10 +29,16 @@ final class Diagnostics
         $results = [];
         $results[] = self::result('Adapter version', 'ok', Version::PLUGIN);
         $fossbilling = class_exists(\FOSSBilling\Version::class) ? \FOSSBilling\Version::VERSION : null;
+        // ClientFence, the fork, keeps VERSION on its FOSSBilling lineage (what the compatibility
+        // check below needs) and numbers its own releases separately. Report the number the
+        // administrator actually sees in the panel.
+        $ownVersionConstant = \FOSSBilling\Version::class . '::CLIENTFENCE';
+        $ownVersion = defined($ownVersionConstant) ? constant($ownVersionConstant) : null;
+        $shown = is_string($ownVersion) && $ownVersion !== '' ? $ownVersion : (string) $fossbilling;
         $results[] = match (true) {
             $fossbilling === null => self::result('FOSSBilling version', 'warn', 'unknown'),
-            version_compare($fossbilling, Version::MIN_FOSSBILLING, '<') => self::result('FOSSBilling version', 'fail', sprintf('%s — %s or newer is required (older versions show API keys in the admin panel)', $fossbilling, Version::MIN_FOSSBILLING)),
-            default => self::result('FOSSBilling version', 'ok', $fossbilling),
+            version_compare($fossbilling, Version::MIN_FOSSBILLING, '<') => self::result('FOSSBilling version', 'fail', sprintf('%s — %s or newer is required (older versions show API keys in the admin panel)', $shown, Version::MIN_FOSSBILLING)),
+            default => self::result('FOSSBilling version', 'ok', $shown),
         };
         $results[] = self::result('Environment', 'ok', sprintf('%s (OSIR environment "%s")', $this->settings->environment->value, $this->settings->environment->apiValue()));
         $results[] = self::result('API endpoint', $this->settings->baseUrl === Settings::DEFAULT_BASE_URL ? 'ok' : 'warn', $this->settings->baseUrl . ($this->settings->baseUrl === Settings::DEFAULT_BASE_URL ? '' : ' (server-level override)'));

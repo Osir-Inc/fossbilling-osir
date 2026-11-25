@@ -52,3 +52,21 @@ the compose network.
 
 The mock encodes our reading of the OSIR API. Before a release, the manual checklist in `docs/RELEASING.md`
 is run against the real OSIR API (there is no OSIR test environment).
+
+## The ClientFence build
+
+ClientFence is a fork of FOSSBilling whose registrar contract is the same one: `Registrar_AdapterAbstract`
+with the same methods, `Registrar_Domain`, `Model_*`. Only the framework classes around it are named
+differently, so the plugin is generated rather than maintained twice:
+
+```sh
+dev/scripts/make-clientfence.sh           # -> build/clientfence/
+dev/scripts/make-clientfence.sh --check   # fails if a FOSSBilling-only name survives
+```
+
+The mapping lives in that script and nowhere else. If ClientFence renames something, the script is the only
+file to change. The plugin's own namespace (`Osir\FossBilling\`) is deliberately left alone, and the check
+run fails if it was touched.
+
+What the rename covers: `Box\Mod\*`, `Box_App`, `Box_Database`, `Box_Log`, `Box_Url`, `FOSSBilling\*`,
+the browser-side `FOSSBilling.api.*` helper, and plain mentions in our own strings and documentation.

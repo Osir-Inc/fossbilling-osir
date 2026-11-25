@@ -70,6 +70,30 @@ jobs:
       - if: always()
         run: make clean
 
+  clientfence:
+    name: ClientFence build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.3'
+          extensions: intl, curl
+          tools: composer:v2
+      - name: Generate it, and fail if a FOSSBilling-only name survives
+        run: dev/scripts/make-clientfence.sh --check
+      - name: Every generated file parses
+        run: find build/clientfence -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+      - name: The renames landed where they should
+        run: |
+          grep -q 'namespace ClientFence\\Mod\\Osir;' build/clientfence/modules/Osir/Service.php
+          grep -q 'class Registrar_Adapter_Osir extends Registrar_AdapterAbstract' build/clientfence/library/Registrar/Adapter/Osir.php
+          grep -q 'ClientFence.api.client.post' build/clientfence/modules/Osir/templates/client/mod_osir_dns.html.twig
+          grep -rq 'namespace Osir\\FossBilling' build/clientfence/library   # our own namespace is untouched
+
   package:
     name: Release package
     runs-on: ubuntu-latest
@@ -86,6 +110,11 @@ jobs:
             src/library /tmp/zip/library
           diff -r src/modules /tmp/zip/modules
           test "$(ls /tmp/zip)" = "$(printf 'library\nmodules')"
+          mkdir -p /tmp/cf && python3 -m zipfile -e dist/osir-clientfence-registrar-*.zip /tmp/cf
+          diff -r --exclude=README.md --exclude=LICENSE --exclude=CHANGELOG.md --exclude=SECURITY.md \
+            build/clientfence/library /tmp/cf/library
+          diff -r build/clientfence/modules /tmp/cf/modules
+          test "$(ls /tmp/cf)" = "$(printf 'library\nmodules')"
           mkdir -p /tmp/theme && python3 -m zipfile -e dist/osir-fossbilling-theme-*.zip /tmp/theme
           diff -r --exclude=README.md --exclude=LICENSE theme/osir /tmp/theme/themes/osir
           test "$(ls /tmp/theme)" = "themes"

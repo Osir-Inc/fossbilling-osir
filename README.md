@@ -8,6 +8,7 @@ Register, transfer, renew and manage domains through [OSIR](https://osir.com) fr
 - Expiry synchronisation through FOSSBilling's cron
 - Refuses to run in FOSSBilling's **Test Mode**: OSIR has no test environment, so nothing is ever sent by mistake
 - `osir-doctor`, a read-only diagnostics command
+- Runs on **ClientFence** as well, from the same sources ([details](#clientfence))
 - **OSIR import** (System → OSIR import, part of the OSIR domains module): import OSIR's TLDs with your
   markup, and turn domains already in your OSIR account into FOSSBilling orders
 - **DNS in the client area**: your clients manage the records of their OSIR-registered domains themselves
@@ -33,7 +34,7 @@ register, renew or transfer a domain twice. See [How it keeps your balance safe]
 
 | | |
 |---|---|
-| FOSSBilling | **0.8.9** (tested); 0.8.7 and 0.8.8 also work. 0.8.7 is the first release that masks secret settings in the admin panel; `osir-doctor` reports older versions as a failure. Run 0.8.9 if you can: it is a security release. |
+| FOSSBilling | **0.8.9** (tested); 0.8.7 and 0.8.8 also work. ClientFence 1.0.62 is tested too, see [ClientFence](#clientfence). 0.8.7 is the first release that masks secret settings in the admin panel; `osir-doctor` reports older versions as a failure. Run 0.8.9 if you can: it is a security release. |
 | PHP | 8.3, 8.4 or 8.5, with `intl` (FOSSBilling already requires it) |
 | OSIR | An OSIR account with API access and a funded balance |
 
@@ -227,6 +228,33 @@ Copy `modules/Servicedomain/templates/client/mod_servicedomain_manage.html.twig`
 ```twig
 <a class="nav-link" href='{{ "osir/dns/#{order.id}"|url }}'>{{ 'DNS'|trans }}</a>
 ```
+
+## ClientFence
+
+[ClientFence](https://www.clientfence.com) is a fork of FOSSBilling, and this plugin supports it officially.
+Its registrar contract is the same one — `Registrar_AdapterAbstract` with the same methods, `Registrar_Domain`,
+`Model_*` — so the same code runs there with the framework class names rewritten. The release carries a
+separate archive for it, built from the same sources and tested the same way.
+
+Install `osir-clientfence-registrar-<version>.zip` exactly as on FOSSBilling: verify the checksum, extract it
+into your ClientFence root (it adds only `library/Registrar/Adapter/Osir*` and `modules/Osir`), install **Osir**
+under **Domain Management → Registrars**, add your API key, and activate the **OSIR domains** module under
+**Extensions**. `osir-doctor` works there too and reports your ClientFence version.
+
+Two differences worth knowing:
+
+- **Use ClientFence's own theme.** The OSIR theme in this repository is built on FOSSBilling's Huraga, which
+  ClientFence does not ship; install only the registrar archive there.
+- **The DNS page needs a link.** ClientFence has no extension point for adding a tab to the domain page, so
+  with the stock palisade theme the page is reachable at `/osir/dns/<order id>` but nothing points to it. To
+  add the link, copy `themes/palisade/html/mod_servicedomain_manage.html.twig` into your own theme and put
+  this beside the other tabs:
+
+  ```twig
+  <a class="nav-link" href='{{ "osir/dns/#{order.id}"|url }}'>{{ 'DNS'|trans }}</a>
+  ```
+
+  A theme upgrade overwrites that file, so re-apply it after one.
 
 ## Optional: the OSIR client theme
 
