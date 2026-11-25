@@ -4,7 +4,7 @@ Everything runs in Docker. No PHP, Composer or database is needed on the host.
 
 | Service | What | Reachable from the host |
 |---|---|---|
-| `fossbilling` | FOSSBilling 0.8.7 (Apache + PHP 8.5) with the adapter bind-mounted read-only | `http://127.0.0.1:18480` only |
+| `fossbilling` | FOSSBilling 0.8.9 (Apache + PHP 8.5) with the adapter bind-mounted read-only | `http://127.0.0.1:18480` only |
 | `db` | MariaDB 11.4 | no |
 | `mock-osir` / `mock-osir-app` | nginx (TLS, private dev CA) → PHP mock of the OSIR API (`dev/mock-osir/router.php`) | no |
 | `e2e` | end-to-end runner (profile `e2e`, not started by `up`) | no |

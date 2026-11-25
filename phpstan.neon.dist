@@ -8,20 +8,20 @@ parameters:
         - tests
     # FOSSBilling's own classes (Registrar_*, FOSSBilling\*, Box_*) from the pinned release.
     scanDirectories:
-        - build/fossbilling-0.8.7/library
-        - build/fossbilling-0.8.7/modules/Order/Entity
-        - build/fossbilling-0.8.7/vendor/gabordemooij/redbean/RedBeanPHP
-        - build/fossbilling-0.8.7/vendor/pimple/pimple/src
-        - build/fossbilling-0.8.7/modules/Servicedomain
+        - build/fossbilling-0.8.9/library
+        - build/fossbilling-0.8.9/modules/Order/Entity
+        - build/fossbilling-0.8.9/vendor/gabordemooij/redbean/RedBeanPHP
+        - build/fossbilling-0.8.9/vendor/pimple/pimple/src
+        - build/fossbilling-0.8.9/modules/Servicedomain
         # The OSIR import module talks to these FOSSBilling modules and libraries.
-        - build/fossbilling-0.8.7/modules/Order
-        - build/fossbilling-0.8.7/modules/Client/Entity
-        - build/fossbilling-0.8.7/modules/Product
-        - build/fossbilling-0.8.7/modules/Currency
-        - build/fossbilling-0.8.7/vendor/symfony/cache-contracts
-        - build/fossbilling-0.8.7/vendor/psr/cache/src
-        - build/fossbilling-0.8.7/vendor/doctrine/orm/src
-        - build/fossbilling-0.8.7/vendor/doctrine/persistence/src
+        - build/fossbilling-0.8.9/modules/Order
+        - build/fossbilling-0.8.9/modules/Client/Entity
+        - build/fossbilling-0.8.9/modules/Product
+        - build/fossbilling-0.8.9/modules/Currency
+        - build/fossbilling-0.8.9/vendor/symfony/cache-contracts
+        - build/fossbilling-0.8.9/vendor/psr/cache/src
+        - build/fossbilling-0.8.9/vendor/doctrine/orm/src
+        - build/fossbilling-0.8.9/vendor/doctrine/persistence/src
     stubFiles:
         - tests/stubs/fossbilling-models.stub
     bootstrapFiles:

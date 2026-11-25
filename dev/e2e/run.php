@@ -150,6 +150,17 @@ function setConstant(string $name, ?string $value): void
     sleep(3);
 }
 
+/**
+ * Writes the handle's cookies to its jar.
+ *
+ * curl used to do this when the handle was closed; since curl 8.14 (php:8.3-cli, late 2026) it no
+ * longer does, and without the flush every request here would start a new session.
+ */
+function flushCookies(\CurlHandle $ch): void
+{
+    curl_setopt($ch, CURLOPT_COOKIELIST, 'FLUSH');
+}
+
 /** Reads one cookie out of a curl cookie jar. */
 function cookieValue(string $jar, string $name): ?string
 {
@@ -188,6 +199,7 @@ function clientApi(string $jar, string $endpoint, array $params = []): array
         CURLOPT_COOKIEJAR => $jar,
     ]);
     $raw = (string) curl_exec($ch);
+    flushCookies($ch);
     curl_close($ch);
     $json = json_decode($raw, true);
     if (!is_array($json)) {
@@ -211,19 +223,28 @@ function clientLogin(string $suffix, ?string &$error = null): string
     $ch = curl_init(FB . '/');
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_COOKIEFILE => $jar, CURLOPT_COOKIEJAR => $jar]);
     curl_exec($ch);
+    flushCookies($ch);
     curl_close($ch);
 
+    // FOSSBilling 0.8.9 requires guest login to be a POST carrying the pre-login session token
+    // from a same-origin context, exactly as the shipped login form does.
+    $headers = ['Content-Type: application/json'];
+    $csrf = cookieValue($jar, 'fossbilling_csrf');
+    if ($csrf !== null) {
+        $headers[] = 'X-CSRF-TOKEN: ' . $csrf;
+    }
     $ch = curl_init(FB . '/api/guest/client/login');
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 60,
         CURLOPT_POSTFIELDS => json_encode(['email' => "fossbilling-e2e+$suffix@osir.com", 'password' => 'E2e-Passw0rd!' . $suffix]),
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_HTTPHEADER => $headers,
         CURLOPT_COOKIEFILE => $jar,
         CURLOPT_COOKIEJAR => $jar,
     ]);
     $raw = (string) curl_exec($ch);
+    flushCookies($ch);
     curl_close($ch);
     $json = json_decode($raw, true);
     $err = is_array($json) ? ($json['error'] ?? null) : null;

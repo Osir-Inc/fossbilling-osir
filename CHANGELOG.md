@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] - 2026-11-25
+
+### Changed
+- Tested against **FOSSBilling 0.8.9** (and 0.8.8), which the development stack and CI now use. Nothing in the
+  plugin had to change: 0.8.9 leaves `Registrar_AdapterAbstract`, `Registrar_Domain`, the order and domain
+  service APIs, module routing and the client domain page untouched, and the stricter escaping introduced in
+  0.8.8 does not affect the DNS page, which stores nothing in FOSSBilling. 0.8.9 is a security release, so run
+  it if you can.
+- The module now carries OSIR's own logo instead of a generic globe, so the Extensions list, the extension
+  directory and osir.com show the same mark.
+
 ## [1.3.1] - 2026-09-21
 
 ### Changed

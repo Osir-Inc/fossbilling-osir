@@ -2,11 +2,11 @@
   "id": "osir",
   "type": "mod",
   "name": "OSIR domains",
-  "icon_url": "icon.svg",
+  "icon_url": "icon.png",
   "description": "DNS management in the client area for domains registered through OSIR, plus admin import of TLDs (with your markup) and of domains already held at OSIR. Requires the OSIR registrar adapter.",
   "homepage_url": "https://github.com/Osir-Inc/fossbilling-osir",
   "author": "OSIR",
   "author_url": "https://osir.com",
   "license": "Apache-2.0",
-  "version": "1.3.1"
+  "version": "1.3.2"
 }

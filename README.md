@@ -33,7 +33,7 @@ register, renew or transfer a domain twice. See [How it keeps your balance safe]
 
 | | |
 |---|---|
-| FOSSBilling | **0.8.7** (tested). 0.8.7 is the first release that masks secret settings in the admin panel; `osir-doctor` reports older versions as a failure. |
+| FOSSBilling | **0.8.9** (tested); 0.8.7 and 0.8.8 also work. 0.8.7 is the first release that masks secret settings in the admin panel; `osir-doctor` reports older versions as a failure. Run 0.8.9 if you can: it is a security release. |
 | PHP | 8.3, 8.4 or 8.5, with `intl` (FOSSBilling already requires it) |
 | OSIR | An OSIR account with API access and a funded balance |
 
@@ -114,7 +114,7 @@ A key set this way:
 A constant (`define('OSIR_REGISTRAR_API_KEY', …)`) or an environment variable with that name also works and take precedence, but a `define()` added to `config.php` is lost the next time FOSSBilling
 rewrites the file, and FOSSBilling's cron does not always inherit the web server environment. After every FOSSBilling
 update, run `osir-doctor`: it shows where the key comes from. Alternatively, paste the key into the registrar's
-settings: FOSSBilling 0.8.7 stores it in its database and never shows it again ("Configured" badge).
+settings: FOSSBilling 0.8.7 and newer store it in the database and never show it again ("Configured" badge).
 
 ### Settings
 

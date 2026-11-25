@@ -74,7 +74,7 @@ services:
         limits: { cpus: "0.5", memory: 128M, pids: 64 }
 
   fossbilling:
-    image: fossbilling/fossbilling:${OSIRFB_FOSSBILLING_VERSION:-0.8.7}
+    image: fossbilling/fossbilling:${OSIRFB_FOSSBILLING_VERSION:-0.8.9}
     restart: "no"
     depends_on:
       db: { condition: service_healthy }
