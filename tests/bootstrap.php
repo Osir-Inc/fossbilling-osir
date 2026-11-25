@@ -12,13 +12,33 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 require $root . '/vendor/autoload.php';
 
+// The version is whatever dev/scripts/fetch-fossbilling.sh put in build/ — the newest one when
+// several are present. Pinning it here as well only produces confusing failures when the pin moves
+// and a stale directory is still lying around, which is exactly how 1.3.2's build broke.
 $envVersion = getenv('FOSSBILLING_VERSION');
-$fossbillingVersion = is_string($envVersion) && $envVersion !== '' ? $envVersion : '0.8.7';
-$library = $root . '/build/fossbilling-' . $fossbillingVersion . '/library';
-if (!is_file($library . '/Registrar/AdapterAbstract.php')) {
-    fwrite(STDERR, "FOSSBilling {$fossbillingVersion} not found in build/. Run dev/scripts/fetch-fossbilling.sh {$fossbillingVersion}\n");
+if (is_string($envVersion) && $envVersion !== '') {
+    $versions = [$envVersion];
+} else {
+    $dirs = glob($root . '/build/fossbilling-*', GLOB_ONLYDIR);
+    $versions = array_map(
+        static fn(string $dir): string => substr(basename($dir), strlen('fossbilling-')),
+        $dirs === false ? [] : $dirs,
+    );
+    usort($versions, static fn(string $a, string $b): int => version_compare($b, $a));
+}
+$fossbillingVersion = null;
+foreach ($versions as $candidate) {
+    if (is_file($root . '/build/fossbilling-' . $candidate . '/library/Registrar/AdapterAbstract.php')) {
+        $fossbillingVersion = $candidate;
+
+        break;
+    }
+}
+if ($fossbillingVersion === null) {
+    fwrite(STDERR, "No FOSSBilling release found in build/. Run dev/scripts/fetch-fossbilling.sh\n");
     exit(1);
 }
+$library = $root . '/build/fossbilling-' . $fossbillingVersion . '/library';
 
 define('PATH_ROOT', dirname($library));
 define('PATH_LIBRARY', $library);

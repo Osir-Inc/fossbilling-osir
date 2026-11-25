@@ -6,6 +6,6 @@ namespace Osir\FossBilling;
 
 final class Version
 {
-    public const string PLUGIN = '1.3.3';
+    public const string PLUGIN = '1.3.4';
     public const string MIN_FOSSBILLING = '0.8.7';
 }

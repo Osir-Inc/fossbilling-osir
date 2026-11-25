@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [1.3.3] - 2026-11-25
+## [1.3.4] - 2026-11-25
 
 ### Changed
 - Tested against **FOSSBilling 0.8.9** (and 0.8.8), which the development stack and CI now use. Nothing in the
@@ -18,8 +18,14 @@ All notable changes to this project are documented here. The format follows
   CVE-2026-135803). They affect the test toolchain only: the plugin ships no vendor directory and uses the
   Symfony that FOSSBilling itself provides.
 
+### Fixed
+- The unit-test bootstrap no longer pins a FOSSBilling version of its own: it uses whichever release
+  `dev/scripts/fetch-fossbilling.sh` put in `build/`, newest first. The old pin passed locally only because a
+  stale 0.8.7 tree was still lying around, and failed in CI where it was not.
+
 ### Note
-- 1.3.2 was tagged but never released: its build failed on those advisories. Use 1.3.3.
+- 1.3.2 and 1.3.3 were tagged but never released: 1.3.2's build failed on the Symfony advisories above, and
+  1.3.3's on that stale version pin. Use 1.3.4; the contents are the same work.
 
 ## [1.3.1] - 2026-09-21
 
