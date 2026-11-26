@@ -93,7 +93,16 @@ final class ImportService
 
         $total = $quote['totalCost'] ?? null;
         $totalWithFees = $quote['totalFees'] ?? null;
-        $standard = $quote['standardTotalCost'] ?? $total;
+
+        // OSIR reports standardTotalCost as 0 for some TLDs - .al and its second levels, whose
+        // quotes are built by a separate path that never fills the field. There 0 means "not
+        // reported", not "free", and the standard price of a quote with no promotion is simply its
+        // total. When a promotion IS applied, a missing standard price is still refused: that is
+        // the case where selling at the promotional price would lose money for good.
+        $promoApplied = ($quote['promoApplied'] ?? false) === true;
+        $reported = $quote['standardTotalCost'] ?? null;
+        $standard = is_int($reported) && $reported > 0 ? $reported : ($promoApplied ? null : $total);
+
         $unusable = ($quote['valid'] ?? null) !== true
             || ($quote['premium'] ?? false) === true
             || ($quote['registrationYears'] ?? $years) !== $years
@@ -119,7 +128,7 @@ final class ImportService
             $renew = intdiv($renew * $register + $tld->registerCents - 1, $tld->registerCents);
             $transfer = intdiv($transfer * $register + $tld->registerCents - 1, $tld->registerCents);
         }
-        if (($quote['promoApplied'] ?? false) === true && $standard > $total) {
+        if ($promoApplied && $standard > $total) {
             // The fees were computed on the promotional price; OSIR's fee can depend on the price.
             $estimated = true;
         }

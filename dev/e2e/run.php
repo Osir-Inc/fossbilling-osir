@@ -695,12 +695,16 @@ scenario('21', 'Import tool, step 1: TLDs priced from OSIR\'s quote plus markup;
     check($error === null || str_contains($error, 'already'), 'OSIR import module activates', (string) $error);
     // TLDs created by a previous run of this suite would otherwise be "already in FOSSBilling".
     $pdo = new PDO('mysql:host=db;dbname=fossbilling', 'fossbilling', getenv('OSIRFB_DB_PASSWORD') ?: '');
-    $pdo->exec("DELETE FROM tld WHERE tld IN ('.io', '.shop', '.net')");
+    $pdo->exec("DELETE FROM tld WHERE tld IN ('.io', '.shop', '.net', '.al')");
     $mark = requestCount();
     $chargesBefore = count(mock('state')['charges']);
 
     $catalog = array_column(fbOk('osir/tld_catalog', ['registrar_id' => $registrarId, 'refresh' => 1]), null, 'tld');
     check(isset($catalog['.io'], $catalog['.shop'], $catalog['.xn--p1ai']) && !isset($catalog['.broken']), 'catalog loaded; the entry without a price is left out', implode(',', array_keys($catalog)));
+    // A TLD whose quote reports no standard price and no fees (.al and its second levels at OSIR):
+    // 0 there means "not reported", and reading it as a price used to drop the TLD altogether.
+    check(isset($catalog['.al']), 'a TLD that reports no standard price is still in the catalogue');
+    check(($catalog['.al']['has_restrictions'] ?? null) === true, 'and it is shown as restricted, which is what OSIR says', json_encode($catalog['.al'] ?? null));
     check(($catalog['.com']['platform']['same_registrar'] ?? false) === true, '.com is recognised as already on this registrar');
 
     $markup = ['markup_percent' => '20', 'markup_fixed' => '0', 'rounding' => '99'];
@@ -708,6 +712,9 @@ scenario('21', 'Import tool, step 1: TLDs priced from OSIR\'s quote plus markup;
     check(($preview['.shop']['cost']['register'] ?? null) === '30.50' && ($preview['.shop']['price']['register'] ?? null) === '36.99', 'promotion ignored: cost 30.00 + 0.50 fees, +20 %, up to .99', json_encode($preview['.shop'] ?? null));
     check(($preview['.io']['estimated'] ?? false) === true && ($preview['.io']['cost']['renew'] ?? null) === '50.50', 'registry price above the catalog raises renewal too, and is flagged', json_encode($preview['.io'] ?? null));
     check(($preview['.net']['cost']['renew'] ?? null) === '12.50', 'renewal cost = catalog renewal + the same fees');
+    $alPreview = array_column(fbOk('osir/tld_preview', ['registrar_id' => $registrarId, 'tlds' => ['.al']] + $markup), null, 'tld');
+    check(($alPreview['.al']['cost']['register'] ?? null) === '7.99', 'the TLD with no standard price is priced at its total, fees included', json_encode($alPreview['.al'] ?? null));
+    check(($alPreview['.al']['estimated'] ?? true) === false, 'and its cost is not a guess');
     [, $notYet] = fb('servicedomain/tld_get', ['tld' => '.io']);
     check($notYet !== null, 'preview writes nothing');
 
@@ -717,8 +724,9 @@ scenario('21', 'Import tool, step 1: TLDs priced from OSIR\'s quote plus markup;
     check($badMarkup !== null, 'a negative markup is refused');
 
     $comBefore = fbOk('servicedomain/tld_get', ['tld' => '.com']);
-    $result = array_column(fbOk('osir/tld_import', ['registrar_id' => $registrarId, 'tlds' => ['.io', '.shop', '.net', '.com'], 'update_existing' => 0] + $markup), null, 'tld');
-    check(array_map(static fn(array $r) => $r['status'], $result) === ['.io' => 'created', '.shop' => 'created', '.net' => 'created', '.com' => 'skipped'], 'three created, the existing one left alone', json_encode(array_map(static fn(array $r) => [$r['status'], $r['message'] ?? null], $result)));
+    $result = array_column(fbOk('osir/tld_import', ['registrar_id' => $registrarId, 'tlds' => ['.io', '.shop', '.net', '.al', '.com'], 'update_existing' => 0] + $markup), null, 'tld');
+    check(array_map(static fn(array $r) => $r['status'], $result) === ['.io' => 'created', '.shop' => 'created', '.net' => 'created', '.al' => 'created', '.com' => 'skipped'], 'four created, the existing one left alone', json_encode(array_map(static fn(array $r) => [$r['status'], $r['message'] ?? null], $result)));
+    check((float) fbOk('servicedomain/tld_get', ['tld' => '.al'])['price_registration'] === 9.99, 'the restricted TLD is sold: 7.99 + 20 % up to .99', json_encode(fbOk('servicedomain/tld_get', ['tld' => '.al'])));
     $shop = fbOk('servicedomain/tld_get', ['tld' => '.shop']);
     check((float) $shop['price_registration'] === 36.99 && (int) $shop['registrar']['id'] === $registrarId && (bool) $shop['active'], '.shop saved with the previewed price on the OSIR registrar', json_encode($shop));
     check(fbOk('servicedomain/tld_get', ['tld' => '.com'])['price_registration'] === $comBefore['price_registration'], 'existing price unchanged without "re-price"');

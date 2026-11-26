@@ -270,14 +270,22 @@ ClientFence adds two optional capabilities to the registrar contract, and this p
   The plugin's own **OSIR import** page still works on both platforms and is the one to use on FOSSBilling;
   it also previews prices and imports the domains you already hold.
 
-  Two things to know before you leave that page's scheduled sync to itself. **It costs a live quote per
-  TLD** — OSIR has no bulk price list, so a complete refresh of its ~470 extensions is ~470 quote requests,
-  ten per call, and staff will click *Get price list* several times before it finishes. And **only the
-  registration cost is quoted**: OSIR does not quote a renewal or a transfer for a name that is not in your
-  account, so those two are its list price plus the same fees, raised when the live registration price is
-  higher. If a registry raises renewals without raising registrations, the renewal cost here can be below
-  what you will actually pay. The TLDs whose figures were worked out that way are named in the system log
-  each time, and applying prices is a decision worth keeping in your own hands.
+  **Read this before you use it on a large catalogue.** OSIR has no bulk price list, so pricing a TLD costs
+  one live quote, and every quote counts against your account's registry budget: **600 registry checks per
+  hour**, shared with the availability checks your own customers' domain searches make. A complete refresh of
+  OSIR's ~470 extensions is ~470 of those checks — it would use up most of that hour and leave your shop's
+  search failing. So:
+
+  - price the TLDs you actually sell, by naming them, rather than refreshing the whole list;
+  - for a large portfolio, use the plugin's own **OSIR import** page instead: it quotes only the TLDs you
+    tick, which is why it answers instantly;
+  - leave the scheduled sync off unless it covers few enough TLDs to fit in that budget comfortably.
+
+  **Only the registration cost is quoted.** OSIR does not quote a renewal or a transfer for a name that is
+  not in your account, so those two are its list price plus the same fees, raised when the live registration
+  price is higher. If a registry raises renewals without raising registrations, the renewal cost here can be
+  below what you will actually pay. The TLDs whose figures were worked out that way are named in the system
+  log each time, and applying prices is a decision worth keeping in your own hands.
 - **Transfer tracking.** An incoming transfer stays pending until the registry has actually moved the
   domain, instead of counting as done when OSIR accepts the request. A rejection fails the order with
   the date and the other registrar, as long as OSIR still lists it among the last 100 incoming transfers;
@@ -316,6 +324,18 @@ See [theme/README.md](theme/README.md).
 | Sync / cron | Updates the expiry date, nameservers, lock and privacy from the registry. Contact data stays as FOSSBilling has it. A domain that is no longer in your OSIR account (transferred away, deleted) keeps FOSSBilling's data, and the log records an error. |
 | Nameservers, lock, privacy, contacts, transfer code | Applied at OSIR. An unchanged nameserver set is not re-sent. |
 | Cancelling or deleting an order | **The domain is not deleted.** OSIR does not allow deletion through the API, so the domain runs until it expires. The log records a warning. Contact OSIR support if a domain must be deleted within the registry grace period. |
+
+### Restricted and premium TLDs
+
+The import page marks some TLDs **restricted** or **premium**. Those are OSIR's own catalogue flags, and
+they do not stop you selling the TLD:
+
+- **restricted** means the registry has registration rules — local presence, a document, an eligible
+  category. `.al` and its second levels (`.com.al`, `.net.al`, `.org.al`) are marked this way, and they
+  import and sell normally. What the flag tells you is that the *registry* may refuse an individual name,
+  and that message reaches the customer at registration, not at checkout.
+- **premium** means the TLD has premium names, which are refused at checkout unless you allow them within
+  a cost limit (see [Premium domains](#premium-domains)). Ordinary names on that TLD are unaffected.
 
 ### Renewals
 

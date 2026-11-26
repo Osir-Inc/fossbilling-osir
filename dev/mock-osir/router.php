@@ -36,8 +36,8 @@ declare(strict_types=1);
  *                                  the e2e account (for the import tools)
  *
  * TLD catalog / quotes for the import tools: .com/.net/.org quote at their catalog price, .io quotes
- * above its catalog price (registry price differs), .shop has a first-year promotion, and one catalog
- * entry has no price (must be left out).
+ * above its catalog price (registry price differs), .shop has a first-year promotion, .al reports no
+ * standard price and no fees (as OSIR does), and one catalog entry has no price (must be left out).
  */
 
 const KEYS = [
@@ -372,14 +372,19 @@ function quote(array &$s, array $p, array $b, array $q): array
     $premium = str_starts_with($label, 'premium') || str_starts_with($label, 'bargain') || str_starts_with($label, 'trap');
     $tld = substr($p[0], strrpos($p[0], '.') + 1);
     // Registry prices that differ from the catalog (.io) or carry a first-year promotion (.shop).
-    $standard = (str_starts_with($label, 'bargain') || str_starts_with($label, 'trap')) ? 65 : ($premium ? 499900 : (['io' => 5000, 'shop' => 3000][$tld] ?? 1000));
+    $standard = (str_starts_with($label, 'bargain') || str_starts_with($label, 'trap')) ? 65 : ($premium ? 499900 : (['io' => 5000, 'shop' => 3000, 'al' => 799][$tld] ?? 1000));
     $promo = $tld === 'shop' && $years === 1;          // first-year promotion: 0.99
     $per = $promo ? 99 : $standard;
+    // OSIR builds .al quotes in a path of their own: no fees at all, and standardTotalCost stays 0
+    // (it means "not reported" there, not "free"). Anything reading it as a price drops the TLD.
+    $al = $tld === 'al';
+    $fees = $al ? 0 : 20 * $years + 30;
 
     return [200, [
         'domain' => $p[0], 'registrationYears' => $years, 'pricePerYear' => $per, 'totalCost' => $per * $years,
-        'standardTotalCost' => $standard * $years, 'promoApplied' => $promo, 'icannFee' => 20 * $years, 'registrarFee' => 30,
-        'totalFees' => $per * $years + 20 * $years + 30, 'premium' => $premium, 'valid' => true, 'currency' => 'USD',
+        'standardTotalCost' => $al ? 0 : $standard * $years, 'promoApplied' => $promo,
+        'icannFee' => $al ? 0 : 20 * $years, 'registrarFee' => $al ? 0 : 30,
+        'totalFees' => $per * $years + $fees, 'premium' => $premium, 'valid' => true, 'currency' => 'USD',
     ]];
 }
 
@@ -634,7 +639,7 @@ function catalog(): array
         'hasPremium' => false, 'hasRestrictions' => false, 'extensionType' => $type,
     ];
 
-    return [200, ['totalExtensions' => 7, 'extensions' => [
+    return [200, ['totalExtensions' => 8, 'extensions' => [
         $e('.com', 1000, 1000, 0),
         $e('.net', 1000, 1200, 1000),
         $e('.org', 1000, 1000, 1000),
@@ -642,6 +647,10 @@ function catalog(): array
         $e('.shop', 3000, 3000, 3000),
         $e('.broken', 0, 0, 0),
         $e('.xn--p1ai', 1000, 1000, 1000, 'ccTLD'),
+        // Priced, restricted, and quoted by a path that reports no standard price - like .al.
+        ['extension' => '.al', 'registrar' => 'MOCK', 'registrationPrice' => 799, 'renewalPrice' => 799, 'transferPrice' => 799,
+            'restorePrice' => 4000, 'minCharacters' => 3, 'maxCharacters' => 63, 'minRegistrationPeriod' => 1, 'maxRegistrationPeriod' => 10,
+            'hasPremium' => false, 'hasRestrictions' => true, 'extensionType' => 'ccTLD'],
     ], 'promotions' => [], 'registrars' => ['MOCK']]];
 }
 

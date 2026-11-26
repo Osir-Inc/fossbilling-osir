@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.2] - 2026-11-26
+
+### Fixed
+- **`.al` and other TLDs whose quote reports no standard price can be priced and imported again.** OSIR
+  builds `.al` quotes (and those of `.com.al`, `.net.al`, `.org.al`) in a path of its own that leaves
+  `standardTotalCost` at `0`, where it means "not reported" rather than "free". The plugin read it as the
+  standard price, found it at zero and left the TLD out of the catalogue entirely: a reseller saw `.al`
+  missing from the price list, and "failed" when adding it by hand. A non-positive `standardTotalCost` is
+  now treated as absent, and the standard price of a quote with no promotion is its total. A quote that
+  *does* carry a promotion and no standard price is still refused — that is the case where selling at the
+  promotional price would lose money on every renewal.
+
+### Changed
+- The README now states what pricing a TLD costs: OSIR has no bulk price list, so each TLD needs one live
+  quote, and every quote counts against the account's **600 registry checks per hour** — a budget shared
+  with the availability checks of your own customers' domain searches. Refreshing ClientFence's whole TLD
+  price list is ~470 of them, which is most of that hour. Price the TLDs you sell by naming them, or use the
+  plugin's own import page, which quotes only what you tick.
+- The README explains the **restricted** and **premium** badges: they are OSIR's catalogue flags and do not
+  stop you selling the TLD. `.al` and its second levels are restricted — the registry has rules about
+  individual names — and they import and sell normally.
+
 ## [1.5.1] - 2026-11-26
 
 ### Fixed

@@ -116,6 +116,34 @@ final class ImportServiceTest extends TestCase
         self::assertStringContainsString('/v2/domains/osirpriceabc123.com/quote?years=1', $http->requests[0]->url);
     }
 
+    public function testAQuoteThatReportsNoStandardPriceIsPricedAtItsTotal(): void
+    {
+        // OSIR answers standardTotalCost: 0 for .al and its second levels (a separate quote path
+        // that never fills the field). With no promotion, the total IS the standard price.
+        $http = (new ScriptedHttpClient())->json(200, self::quote([
+            'domain' => 'osirpriceabc123.al', 'totalCost' => 799, 'totalFees' => 799,
+            'standardTotalCost' => 0, 'promoApplied' => false, 'icannFee' => 0, 'registrarFee' => 0,
+        ]));
+        $cost = self::import($http)->cost(self::tld(['extension' => '.al', 'registrationPrice' => 799, 'renewalPrice' => 799, 'transferPrice' => 799, 'extensionType' => 'ccTLD']));
+
+        self::assertSame(799, $cost->registerCents, 'no fees on this TLD, so cost is the price');
+        self::assertSame(799, $cost->renewCents);
+        self::assertSame(0, $cost->feesCents);
+        self::assertFalse($cost->estimated);
+    }
+
+    public function testAPromotionalQuoteWithNoStandardPriceIsStillRefused(): void
+    {
+        // The dangerous case: a first-year promotion and no way to know the real price. Selling at
+        // the promotional price for good would lose money on every renewal.
+        $http = (new ScriptedHttpClient())->json(200, self::quote([
+            'totalCost' => 99, 'totalFees' => 149, 'standardTotalCost' => 0, 'promoApplied' => true,
+        ]));
+
+        $this->expectException(RuleException::class);
+        self::import($http)->cost(self::tld());
+    }
+
     public function testPromotionIsIgnoredInFavourOfTheStandardPrice(): void
     {
         $http = (new ScriptedHttpClient())->json(200, self::quote(['totalCost' => 99, 'pricePerYear' => 99, 'totalFees' => 149, 'standardTotalCost' => 1039, 'promoApplied' => true]));
