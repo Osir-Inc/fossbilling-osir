@@ -9,7 +9,7 @@ FOSSBilling (Servicedomain module)
 Registrar_Adapter_Osir            library/Registrar/Adapter/Osir.php
    │  thin: FOSSBilling types in, client-safe Registrar_Exception out (guard())
    ▼
-FossBillingMapper                 Mapping/   FOSSBilling objects → value objects (DomainName, Nameservers,
+PlatformMapper              Mapping/      FOSSBilling objects → value objects (DomainName, Nameservers,
    │                                         ContactData, OrderRef); registry state → Registrar_Domain
    ▼
 RegistrarService                  Service/   use cases + money-safety rules
@@ -43,7 +43,7 @@ is the price shown. Imported domains become normal `register` orders (so renewal
 renewal flow apply), but their service row has no pending action, so re-activating the order can never
 register the name.
 
-Only the adapter, `FossBillingMapper` and the import module know FOSSBilling's classes. Everything below them is plain PHP
+Only the adapter, `PlatformMapper` and the import module know FOSSBilling's classes. Everything below them is plain PHP
 and is unit-tested without FOSSBilling. The tests still load FOSSBilling's *real* library classes from a
 pinned, checksum-verified release; there are no hand-written stubs.
 

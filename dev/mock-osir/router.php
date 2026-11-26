@@ -216,6 +216,7 @@ $routes = [
     ['GET', '#^/v2/transfer/([^/]+)/quote$#', 'transferQuote'],
     ['POST', '#^/v2/transfer/initiate$#', 'transfer'],
     ['GET', '#^/v2/transfer/([^/]+)/status$#', 'transferStatus'],
+    ['GET', '#^/v2/transfer/gaining$#', 'transferHistory'],
     ['GET', '#^/v1/payment/balance$#', 'balance'],
     ['GET', '#^/v1/public/catalog/domains$#', 'catalog'],
     ['GET', '#^/v2/domains$#', 'listDomains'],
@@ -594,6 +595,30 @@ function transferStatus(array &$s, array $p, array $b, array $q, string $c): arr
     }
 
     return [200, ['domain' => $d, 'status' => 'PENDING', 'transferType' => 'GAINING', 'transferInitiatedDate' => ldt($t['initiated']), 'expectedCompletionDate' => ldt($t['initiated'] + 5 * 86400)]];
+}
+
+/**
+ * Incoming transfers in any status, newest first, paged — like OSIR's own history endpoint, which
+ * is the only place a finished transfer can still be seen (the status endpoint drops it).
+ */
+function transferHistory(array &$s, array $p, array $b, array $q, string $c): array
+{
+    $wanted = array_filter(array_map('strtoupper', array_map('trim', explode(',', (string) ($q['status'] ?? '')))));
+    $size = max(1, min(100, (int) ($q['size'] ?? 20)));
+    $rows = [];
+    foreach ($s['transfers'] as $domain => $t) {
+        if ($t['customer'] !== $c || ($wanted !== [] && !in_array($t['status'], $wanted, true))) {
+            continue;
+        }
+        $rows[] = [
+            'domain' => $domain, 'status' => $t['status'], 'transferType' => 'GAINING',
+            'createdAt' => ldt($t['initiated']), 'expiresAt' => ldt($t['initiated'] + 5 * 86400),
+            'facingRegistrar' => 'MOCK REGISTRAR',
+        ];
+    }
+    usort($rows, static fn(array $a, array $z): int => strcmp((string) $z['createdAt'], (string) $a['createdAt']));
+
+    return [200, ['page' => (int) ($q['page'] ?? 0), 'pageSize' => $size, 'total' => count($rows), 'data' => array_slice($rows, 0, $size)]];
 }
 
 function balance(array &$s, array $p, array $b, array $q, string $c): array

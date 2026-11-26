@@ -211,6 +211,68 @@ function clientApi(string $jar, string $endpoint, array $params = []): array
 }
 
 /**
+ * A page as a browser would load it: the client area in the session of $jar, or — with no jar —
+ * the admin area, which serves its pages to any staff session the cookie file carries.
+ *
+ * @param-out string|null $error
+ */
+function clientPage(string $jar, string $path, ?string &$error = null): string
+{
+    $ch = curl_init(FB . $path);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_COOKIEFILE => $jar, CURLOPT_COOKIEJAR => $jar]);
+    $body = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $transport = curl_error($ch);
+    flushCookies($ch);
+    curl_close($ch);
+    $error = $status === 200 ? null : sprintf('HTTP %d %s', $status, $transport);
+
+    return is_string($body) ? $body : '';
+}
+
+/**
+ * Signs the development staff account in and returns its cookie jar, for the admin PAGES (the
+ * admin API uses the token instead).
+ *
+ * @param-out string|null $error
+ */
+function staffLogin(?string &$error = null): string
+{
+    $jar = tempnam(sys_get_temp_dir(), 'e2e-staff-');
+    $ch = curl_init(FB . '/admin/staff/login');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_COOKIEFILE => $jar, CURLOPT_COOKIEJAR => $jar]);
+    curl_exec($ch);
+    flushCookies($ch);
+    curl_close($ch);
+
+    $headers = ['Content-Type: application/json'];
+    $csrf = cookieValue($jar, 'fossbilling_csrf');
+    if ($csrf !== null) {
+        $headers[] = 'X-CSRF-TOKEN: ' . $csrf;
+    }
+    $ch = curl_init(FB . '/api/guest/staff/login');
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_POSTFIELDS => json_encode(['email' => getenv('OSIRFB_ADMIN_EMAIL') ?: '', 'password' => getenv('OSIRFB_ADMIN_PASSWORD') ?: '']),
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_COOKIEFILE => $jar,
+        CURLOPT_COOKIEJAR => $jar,
+    ]);
+    $body = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    flushCookies($ch);
+    curl_close($ch);
+    $json = is_string($body) ? json_decode($body, true) : null;
+    $error = $status === 200 && is_array($json) && ($json['error'] ?? null) === null
+        ? null
+        : sprintf('HTTP %d %s', $status, is_string($body) ? substr($body, 0, 200) : '');
+
+    return $jar;
+}
+
+/**
  * Signs a client in and returns their cookie jar.
  *
  * @param-out string|null $error
@@ -639,7 +701,7 @@ scenario('21', 'Import tool, step 1: TLDs priced from OSIR\'s quote plus markup;
 
     $catalog = array_column(fbOk('osir/tld_catalog', ['registrar_id' => $registrarId, 'refresh' => 1]), null, 'tld');
     check(isset($catalog['.io'], $catalog['.shop'], $catalog['.xn--p1ai']) && !isset($catalog['.broken']), 'catalog loaded; the entry without a price is left out', implode(',', array_keys($catalog)));
-    check(($catalog['.com']['fossbilling']['same_registrar'] ?? false) === true, '.com is recognised as already on this registrar');
+    check(($catalog['.com']['platform']['same_registrar'] ?? false) === true, '.com is recognised as already on this registrar');
 
     $markup = ['markup_percent' => '20', 'markup_fixed' => '0', 'rounding' => '99'];
     $preview = array_column(fbOk('osir/tld_preview', ['registrar_id' => $registrarId, 'tlds' => ['.io', '.shop', '.net']] + $markup), null, 'tld');
@@ -744,6 +806,15 @@ scenario('23', 'Client DNS tab: only your own domain, and never the zone apex', 
 
     $jar = clientLogin($dnsSuffix, $loginError);
     check($loginError === null, 'the client signs in to their own area', (string) $loginError);
+
+    // The page itself, as a browser gets it: its JavaScript is inline, so it must be allowed to
+    // run. ClientFence sends a script-policy nonce and the template carries it; FOSSBilling sends
+    // none, and then the tag must stay plain (a nonce no header mentions would block the script).
+    $page = clientPage($jar, "/osir/dns/$order", $pageError);
+    check($pageError === null, 'the client DNS page loads', (string) $pageError);
+    check(str_contains($page, '<script>'), 'its inline script is served without a nonce on FOSSBilling');
+    check(!str_contains($page, 'nonce='), 'no nonce attribute where the platform sets no policy');
+    check(str_contains($page, 'osir-dns-form'), 'the add/edit form is rendered');
 
     [$overview, $error] = clientApi($jar, 'osir/dns_records', ['order_id' => $order]);
     check($error === null && is_array($overview), 'client reads the records of their own domain', (string) $error);
@@ -852,6 +923,21 @@ scenario('24', 'Premium names: refused by default, allowed only within the cost 
         fbOk('servicedomain/registrar_update', ['id' => $registrarId, 'config' => ['allow_cheaper_premium' => '0', 'max_yearly_cost' => '']]);
     }
 }, ['2']);
+
+scenario('25', 'The admin import page serves its script so the browser will run it', function (): void {
+    // ClientFence blocks an inline script that carries no nonce; FOSSBilling sends no policy and
+    // the tag must stay plain. The page is also the first thing a partner sees, so it is loaded
+    // here the way a browser loads it, with a staff session rather than the API token.
+    $jar = staffLogin($loginError);
+    check($loginError === null, 'staff sign in', (string) $loginError);
+
+    $page = clientPage($jar, '/admin/osir', $pageError);
+    check($pageError === null, 'the OSIR import page loads', (string) $pageError);
+    check(str_contains($page, 'osir-load-catalog'), 'the import controls are rendered');
+    check(str_contains($page, '<script>'), 'its inline script is served without a nonce on FOSSBilling');
+    check(!str_contains($page, 'nonce='), 'no nonce attribute where the platform sets no policy');
+    check(str_contains($page, "call('tld_catalog'"), 'the script knows which endpoint to call');
+});
 
 $total = $passes + $failures;
 echo "\n" . ($failures === 0 ? "\033[32mALL $total CHECKS PASSED\033[0m" : "\033[31m$failures OF $total CHECKS FAILED\033[0m") . "\n";

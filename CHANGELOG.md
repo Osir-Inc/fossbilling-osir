@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-11-26
+
+### Fixed
+- **The admin import page and the client DNS tab work on ClientFence.** ClientFence sends a
+  `Content-Security-Policy` with a script nonce, and a browser ignores `'unsafe-inline'` as soon as a nonce
+  is present: both pages carry their JavaScript inline, so none of it ran. The page looked right and
+  nothing happened — no TLD catalogue, no domain list, no prices, and a client area DNS form whose buttons
+  did nothing. Both `<script>` tags now carry the nonce where the platform provides one
+  (`{% if csp_nonce is defined %}`), which changes nothing on FOSSBilling, where there is no nonce.
+  Reproduced and verified in a browser on ClientFence 1.0.62: catalogue rows load, and a DNS record can be
+  added from the client area.
+
+### Added
+- **ClientFence's own TLD price page and transfer tracking are supported** (`Registrar_TldPrices`,
+  `Registrar_TransferStatus`, both optional in its registrar contract; the generated ClientFence build
+  declares them).
+  - *Price list*: ClientFence's **Domain Registration > OSIR > TLDs and prices** now fills from OSIR — the
+    cost of one year per action in USD, fees included, ten TLDs per call until the list is complete.
+    ClientFence applies your markup, rounding and currency rate; the scheduled sync is off until you turn
+    it on. A TLD OSIR will not quote (a registry change) is left out and logged rather than reported as
+    free, so a price that already sells is never overwritten with a guess. The plugin's own import page is
+    unchanged and remains the way to do this on FOSSBilling, with the preview and the domain import.
+  - *Transfers*: an incoming transfer stays pending in ClientFence until the registry has actually moved the
+    domain. OSIR drops a finished transfer from its status endpoint, so the outcome is read from the account
+    (the domain arrived → the order completes) and from OSIR's transfer history (rejected → the order fails
+    with the date and the other registrar). Anything else — including an answer that cannot be read — keeps
+    the order pending, so an order is never closed or failed on a guess.
+  - The ClientFence build declares the two interfaces itself when the platform does not have them, so the
+    archive can be installed on a ClientFence older than 1.0.62 without taking the registrar down with it.
+
+### Changed
+- Nothing in the ClientFence build says FOSSBilling any more, in any spelling. The plugin's own namespace
+  becomes `Osir\ClientFence\` there, `FossBillingMapper` is now `PlatformMapper`, and the generator's
+  `--check` fails on the word in either case. Partners reading the shipped files were asking whether a
+  FOSSBilling reference in the adapter mattered; it never did, and now it is not there.
+- The catalogue row returned by the admin API `osir_tld_catalog` calls its "already in the shop" field
+  `platform` instead of `fossbilling`. Only the plugin's own admin page reads it.
+
 ## [1.4.0] - 2026-11-25
 
 ### Added

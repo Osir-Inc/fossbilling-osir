@@ -7,7 +7,7 @@ namespace Osir\FossBilling\Tests\Unit;
 use Osir\FossBilling\Config\Environment;
 use Osir\FossBilling\Domain\DomainName;
 use Osir\FossBilling\Exception\ValidationException;
-use Osir\FossBilling\Mapping\FossBillingMapper;
+use Osir\FossBilling\Mapping\PlatformMapper;
 use Osir\FossBilling\Service\IdempotencyKeys;
 use Osir\FossBilling\Service\OrderRef;
 use PHPUnit\Framework\TestCase;
@@ -57,7 +57,7 @@ final class IdempotencyAndMapperTest extends TestCase
                 return new \DateTimeImmutable('2027-09-19T10:00:00Z');
             }
         };
-        $ref = FossBillingMapper::orderRef($entity);
+        $ref = PlatformMapper::orderRef($entity);
         self::assertNotNull($ref);
         self::assertSame('77', $ref->id);
         self::assertSame(1789812000, $ref->createdAt);
@@ -73,27 +73,27 @@ final class IdempotencyAndMapperTest extends TestCase
         $bean->setProperty('expires_at', '2027-09-19 10:00:00');
         $order = new \Model_ClientOrder();
         $order->loadBean($bean);
-        $ref = FossBillingMapper::orderRef($order);
+        $ref = PlatformMapper::orderRef($order);
         self::assertNotNull($ref);
         self::assertSame(strtotime('2027-09-19 10:00:00'), $ref->expiresAt);
     }
 
     public function testOrderRefRejectsNonNumericIds(): void
     {
-        self::assertNull(FossBillingMapper::orderRef(new class {
+        self::assertNull(PlatformMapper::orderRef(new class {
             public string $id = '12; DROP';
         }));
-        self::assertNull(FossBillingMapper::orderRef(null));
+        self::assertNull(PlatformMapper::orderRef(null));
     }
 
     public function testYearsDefaultsOnlyWhenMissing(): void
     {
         $d = new \Registrar_Domain();
-        self::assertSame(1, FossBillingMapper::years($d));
+        self::assertSame(1, PlatformMapper::years($d));
         $d->setRegistrationPeriod(3);
-        self::assertSame(3, FossBillingMapper::years($d));
+        self::assertSame(3, PlatformMapper::years($d));
         $d->setRegistrationPeriod(0);
         $this->expectException(ValidationException::class);
-        FossBillingMapper::years($d);
+        PlatformMapper::years($d);
     }
 }

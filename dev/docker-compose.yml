@@ -107,6 +107,10 @@ services:
     command: ["php", "run.php"]
     environment:
       OSIRFB_DB_PASSWORD: ${OSIRFB_DB_PASSWORD}
+      # The admin pages are served to a staff SESSION, not to the API token, so the scenario that
+      # loads the import page signs in the way a browser does.
+      OSIRFB_ADMIN_EMAIL: ${OSIRFB_ADMIN_EMAIL}
+      OSIRFB_ADMIN_PASSWORD: ${OSIRFB_ADMIN_PASSWORD}
       E2E_ONLY: ${E2E_ONLY:-}
     volumes:
       - ./e2e:/e2e:ro

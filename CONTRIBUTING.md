@@ -10,6 +10,6 @@ Thanks for helping. A few rules keep this adapter safe to run against people's m
    handling, input validation, log scrubbing, client-safe errors) without an issue discussing why.
 4. **No new runtime dependencies.** The adapter must run on a plain FOSSBilling install.
 5. Keep the adapter layered (see `docs/ARCHITECTURE.md`): FOSSBilling types only in `Osir.php` and
-   `FossBillingMapper`; transport concerns only in `Http/`.
+   `PlatformMapper`; transport concerns only in `Http/`.
 
 Security issues: see [SECURITY.md](SECURITY.md), never a public issue.

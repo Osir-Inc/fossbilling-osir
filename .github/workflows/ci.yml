@@ -83,16 +83,43 @@ jobs:
           php-version: '8.3'
           extensions: intl, curl
           tools: composer:v2
-      - name: Generate it, and fail if a FOSSBilling-only name survives
+      - name: Generate it, and fail if the word FOSSBilling survives
         run: dev/scripts/make-clientfence.sh --check
       - name: Every generated file parses
         run: find build/clientfence -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
       - name: The renames landed where they should
         run: |
           grep -q 'namespace ClientFence\\Mod\\Osir;' build/clientfence/modules/Osir/Service.php
-          grep -q 'class Registrar_Adapter_Osir extends Registrar_AdapterAbstract' build/clientfence/library/Registrar/Adapter/Osir.php
+          grep -q 'class Registrar_Adapter_Osir extends Registrar_AdapterAbstract implements Registrar_TldPrices, Registrar_TransferStatus' build/clientfence/library/Registrar/Adapter/Osir.php
           grep -q 'ClientFence.api.client.post' build/clientfence/modules/Osir/templates/client/mod_osir_dns.html.twig
-          grep -rq 'namespace Osir\\FossBilling' build/clientfence/library   # our own namespace is untouched
+          grep -rq 'namespace Osir\\ClientFence' build/clientfence/library   # our own namespace follows the platform
+          grep -q 'Osir-Inc/clientfence-osir' build/clientfence/modules/Osir/manifest.json
+          # the two interfaces are declared when the platform lacks them, or an older ClientFence
+          # would fatal on the class declaration and lose the whole registrar
+          grep -q "interface_exists('Registrar_TldPrices')" build/clientfence/library/Registrar/Adapter/Osir.php
+          grep -q "interface_exists('Registrar_TransferStatus')" build/clientfence/library/Registrar/Adapter/Osir.php
+      - name: The build loads on a ClientFence that has neither capability
+        run: |
+          cat > /tmp/older-clientfence.php <<'PHP'
+          <?php
+          // The least a fork must provide; the two capability interfaces are deliberately absent.
+          abstract class Registrar_AdapterAbstract { public function __construct($options) {} }
+          class Registrar_Domain {}
+          require 'build/clientfence/library/Registrar/Adapter/Osir.php';
+          $missing = array_values(array_filter(['getTldPrices', 'getTransferStatus'], fn (string $m): bool => !method_exists('Registrar_Adapter_Osir', $m)));
+          echo $missing === [] ? "loads without the interfaces\n" : 'missing: ' . implode(', ', $missing) . "\n";
+          exit($missing === [] ? 0 : 1);
+          PHP
+          php /tmp/older-clientfence.php
+      - name: Both inline scripts carry the platform's script-policy nonce
+        run: |
+          for f in build/clientfence/modules/Osir/templates/admin/mod_osir_index.html.twig \
+                   build/clientfence/modules/Osir/templates/client/mod_osir_dns.html.twig \
+                   src/modules/Osir/templates/admin/mod_osir_index.html.twig \
+                   src/modules/Osir/templates/client/mod_osir_dns.html.twig; do
+            grep -q '<script{% if csp_nonce is defined %} nonce="{{ csp_nonce }}"{% endif %}>' "$f" \
+              || { echo "$f has an inline script without the nonce: ClientFence's CSP would block it"; exit 1; }
+          done
 
   package:
     name: Release package

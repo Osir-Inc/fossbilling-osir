@@ -68,5 +68,21 @@ The mapping lives in that script and nowhere else. If ClientFence renames someth
 file to change. The plugin's own namespace (`Osir\FossBilling\`) is deliberately left alone, and the check
 run fails if it was touched.
 
+### Publishing it
+
+ClientFence users get their own repository, [Osir-Inc/clientfence-osir](https://github.com/Osir-Inc/clientfence-osir),
+which is generated and never edited by hand:
+
+```sh
+dev/scripts/build-release.sh                      # builds the three archives
+dev/scripts/publish-clientfence-repo.sh v1.4.0    # commits, tags and releases the ClientFence build
+```
+
+It rebuilds the tree from the tag, refuses to push if anything personal or internal appears in it, commits as
+`OSIR <noreply@osir.com>`, tags with the same version and attaches the same archive. `dev/clientfence-repo-README.md`
+is that repository's README, and anything in `dev/clientfence-repo-assets/` (screenshots, for instance) is copied
+in alongside it. The step is deliberately manual: automating it from CI would mean storing a token with write
+access to a second repository.
+
 What the rename covers: `Box\Mod\*`, `Box_App`, `Box_Database`, `Box_Log`, `Box_Url`, `FOSSBilling\*`,
 the browser-side `FOSSBilling.api.*` helper, and plain mentions in our own strings and documentation.

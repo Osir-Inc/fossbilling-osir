@@ -6,7 +6,7 @@ declare(strict_types=1);
  * OSIR domain registrar adapter for FOSSBilling.
  *
  * Copyright OSIR Inc. Licensed under the Apache License, Version 2.0.
- * Documentation: https://github.com/osir/fossbilling-registrar
+ * Documentation: https://github.com/Osir-Inc/fossbilling-osir
  *
  * This class is deliberately thin: it translates FOSSBilling's Registrar_Domain objects into the
  * adapter's validated types, calls {@see Osir\FossBilling\Service\RegistrarService}, and converts
@@ -26,9 +26,11 @@ use Osir\FossBilling\Exception\ValidationException;
 use Osir\FossBilling\Http\ApiClient;
 use Osir\FossBilling\Http\RetryPolicy;
 use Osir\FossBilling\Import\ImportService;
+use Osir\FossBilling\Import\TldPriceList;
 use Osir\FossBilling\Mapping\AvailabilityState;
 use Osir\FossBilling\Mapping\DomainStatus;
-use Osir\FossBilling\Mapping\FossBillingMapper as Map;
+use Osir\FossBilling\Mapping\PlatformMapper as Map;
+use Osir\FossBilling\Mapping\TransferState;
 use Osir\FossBilling\Service\Diagnostics;
 use Osir\FossBilling\Service\RegistrarService;
 use Osir\FossBilling\Support\SafeLogger;
@@ -57,6 +59,7 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
     private array $options;
 
     private ?RegistrarService $service = null;
+    private ?TldPriceList $tldPriceList = null;
     private ?Settings $settings = null;
     private ?SafeLogger $safeLog = null;
     private ?ConfigurationException $configurationError = null;
@@ -315,6 +318,54 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
         });
     }
 
+    // ----------------------------------------------------------- ClientFence capabilities
+    //
+    // ClientFence adds two optional interfaces to the registrar contract, and the generated
+    // ClientFence build of this adapter declares them (dev/scripts/make-clientfence.sh). The
+    // methods are here in both builds: FOSSBilling simply never calls them.
+
+    /**
+     * OSIR's price list for ClientFence's "TLDs and prices" page, one slice per call: the cost of
+     * one year per action in USD, fees included. ClientFence applies the markup, the rounding and
+     * the currency conversion, and asks again for whatever `remaining` names.
+     *
+     * The plugin's own import page (Osir module) does the same job on both platforms and adds the
+     * preview and the domain import; this exists so ClientFence's native page and its scheduled
+     * price sync work too.
+     *
+     * @param list<string> $tlds TLDs to price, with the leading dot; [] = every TLD OSIR sells
+     *
+     * @return array{currency: string, prices: array<string, array{register: float|null, renew: float|null, transfer: float|null}>, remaining: list<string>}
+     */
+    public function getTldPrices(array $tlds = []): array
+    {
+        return $this->guard(fn(): array => $this->tldPriceList()->slice(array_values(array_filter($tlds, 'is_string'))));
+    }
+
+    /**
+     * Where an incoming transfer stands, so ClientFence can keep the order pending until the
+     * registry has actually moved the domain instead of closing it when OSIR accepts the request.
+     *
+     * @return array{status: string, message: string}
+     */
+    public function getTransferStatus(Registrar_Domain $domain): array
+    {
+        return $this->guard(function () use ($domain): array {
+            $progress = $this->service()->transferProgress(Map::domainName($domain));
+
+            // The values of Registrar_TransferStatus::PENDING / COMPLETED / FAILED, spelled out so
+            // that the FOSSBilling build (where that interface does not exist) still compiles.
+            $status = match ($progress->state) {
+                TransferState::Completed => 'completed',
+                TransferState::Failed => 'failed',
+                TransferState::Pending => 'pending',
+            };
+            $this->log()->info(sprintf('Transfer of %s: %s. %s', $domain->getName(), $status, $progress->message));
+
+            return ['status' => $status, 'message' => $progress->message];
+        });
+    }
+
     /**
      * Builds the service on first use. Overridable so tests can inject a mock HTTP client through
      * {@see Registrar_AdapterAbstract::getHttpClient()}.
@@ -374,6 +425,20 @@ class Registrar_Adapter_Osir extends Registrar_AdapterAbstract
             new ApiClient($this->getHttpClient(), $this->settings, $this->safeLog, RetryPolicy::forCurrentSapi()),
             $this->safeLog,
         );
+    }
+
+    /**
+     * The price list, kept for the whole request: ClientFence asks for one slice after another and
+     * each slice would otherwise fetch the catalog again.
+     *
+     * @throws ConfigurationException when the adapter cannot be configured
+     */
+    private function tldPriceList(): TldPriceList
+    {
+        $this->service();
+        assert($this->safeLog !== null);
+
+        return $this->tldPriceList ??= new TldPriceList($this->importService(), $this->safeLog);
     }
 
     /**

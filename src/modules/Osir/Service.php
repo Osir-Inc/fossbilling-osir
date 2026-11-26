@@ -41,7 +41,7 @@ use Symfony\Contracts\Cache\ItemInterface;
  *
  * @phpstan-type Prices array{register: string, renew: string, transfer: string}
  * @phpstan-type Existing array{id: int, registrar: string, same_registrar: bool, active: bool, price: Prices}
- * @phpstan-type TldRow array{tld: string, display?: string, cost?: Prices, price?: Prices, estimated?: bool, fossbilling?: Existing|null, planned?: 'create'|'update'|'skip', status?: string, message?: string}
+ * @phpstan-type TldRow array{tld: string, display?: string, cost?: Prices, price?: Prices, estimated?: bool, platform?: Existing|null, planned?: 'create'|'update'|'skip', status?: string, message?: string}
  * @phpstan-type DomainResult array{domain: string, status: 'imported'|'skipped'|'failed', message?: string, order_id?: int}
  */
 class Service implements InjectionAwareInterface
@@ -136,7 +136,7 @@ class Service implements InjectionAwareInterface
                 'has_premium' => $tld->hasPremium,
                 'has_restrictions' => $tld->hasRestrictions,
                 'list_price' => self::prices($tld->registerCents, $tld->renewCents, $tld->transferCents),
-                'fossbilling' => $this->existingRow($existing[$tld->tld] ?? null, $registrarId),
+                'platform' => $this->existingRow($existing[$tld->tld] ?? null, $registrarId),
             ];
         }
 
@@ -313,7 +313,7 @@ class Service implements InjectionAwareInterface
                 $row['price'] = self::prices($rule->sellingCents($cost->registerCents), $rule->sellingCents($cost->renewCents), $rule->sellingCents($cost->transferCents));
                 $row['estimated'] = $cost->estimated;
                 $current = $this->existingRow($existing[$tld] ?? null, $registrarId);
-                $row['fossbilling'] = $current;
+                $row['platform'] = $current;
                 if ($current === null) {
                     $row['planned'] = 'create';
                 } elseif ($current['same_registrar']) {

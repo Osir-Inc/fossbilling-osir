@@ -126,7 +126,7 @@
          data-confirm-delete="{{ 'Delete this DNS record?'|trans }}"
          data-deleted="{{ 'Record deleted'|trans }}" data-saved="{{ 'Record saved'|trans }}"></div>
 
-    <script>
+    <script{% if csp_nonce is defined %} nonce="{{ csp_nonce }}"{% endif %}>
         document.addEventListener('DOMContentLoaded', function () {
             const text = document.getElementById('osir-dns-text').dataset;
             const orderId = {{ order_id }};

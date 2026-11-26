@@ -12,6 +12,8 @@ use Osir\FossBilling\Exception\RuleException;
 use Osir\FossBilling\Exception\ValidationException;
 use Osir\FossBilling\Mapping\AvailabilityState;
 use Osir\FossBilling\Mapping\DomainStatus;
+use Osir\FossBilling\Mapping\TransferState;
+use Osir\FossBilling\Tests\Support\CapturingLogger;
 use Osir\FossBilling\Tests\Support\Fixtures;
 use Osir\FossBilling\Tests\Support\ScriptedHttpClient;
 use PHPUnit\Framework\TestCase;
@@ -843,5 +845,154 @@ final class RegistrarServiceTest extends TestCase
     {
         $http = (new ScriptedHttpClient())->json(200, ['success' => true, 'data' => ['balance' => 12.34, 'currency' => 'USD'], 'error' => null]);
         self::assertSame(1234, Fixtures::service($http)->balanceCents());
+    }
+
+    // ------------------------------------------------------------ transfer progress
+
+    /**
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    private static function historyRow(array $overrides = []): array
+    {
+        return array_merge([
+            'domain' => 'example.com', 'status' => 'REJECTED', 'transferType' => 'GAINING',
+            'createdAt' => '2026-11-20T09:00:00', 'expiresAt' => '2026-11-25T09:00:00',
+            'facingRegistrar' => 'Other Registrar Ltd',
+        ], $overrides);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     *
+     * @return array<string, mixed>
+     */
+    private static function history(array $rows): array
+    {
+        return ['page' => 0, 'pageSize' => 100, 'total' => count($rows), 'data' => $rows];
+    }
+
+    public function testATransferOsirStillHasPendingIsReportedPending(): void
+    {
+        $http = (new ScriptedHttpClient())->json(200, [
+            'domain' => 'example.com', 'status' => 'PENDING', 'transferType' => 'GAINING',
+            'expectedCompletionDate' => '2026-12-01T10:11:12', 'facingRegistrar' => 'Other Registrar Ltd',
+        ]);
+        $pending = Fixtures::service($http)->transferProgress(self::domain());
+
+        self::assertSame(TransferState::Pending, $pending->state);
+        self::assertStringContainsString('2026-12-01', $pending->message);
+        self::assertStringContainsString('Other Registrar Ltd', $pending->message);
+        self::assertSame('/v2/transfer/example.com/status', $http->requests[0]->path());
+        self::assertCount(1, $http->requests, 'a pending transfer needs no further question');
+    }
+
+    public function testAnswersOsirDoesNotGiveTodayAreStillActedOn(): void
+    {
+        // The status endpoint only answers for pending transfers, so these two arms are reached
+        // only if OSIR ever starts reporting a finished transfer there.
+        $http = (new ScriptedHttpClient())
+            ->json(200, ['domain' => 'example.com', 'status' => 'APPROVED', 'transferType' => 'GAINING', 'transferCompletedDate' => '2026-11-26T08:00:00'])
+            ->json(200, ['domain' => 'example.com', 'status' => 'REJECTED', 'transferType' => 'GAINING'])
+            ->json(200, ['domain' => 'example.com', 'status' => 'SOMETHING_NEW', 'transferType' => 'GAINING']);
+        $service = Fixtures::service($http);
+
+        $done = $service->transferProgress(self::domain());
+        self::assertSame(TransferState::Completed, $done->state);
+        self::assertStringContainsString('2026-11-26', $done->message);
+
+        self::assertSame(TransferState::Failed, $service->transferProgress(self::domain())->state);
+
+        $unknown = $service->transferProgress(self::domain());
+        self::assertSame(TransferState::Pending, $unknown->state, 'an unknown status never closes or fails an order');
+        self::assertStringContainsString('SOMETHING_NEW', $unknown->message);
+    }
+
+    public function testADomainInTheAccountMeansTheTransferArrived(): void
+    {
+        // OSIR drops a finished transfer from the status endpoint, so this 404 is the normal end
+        // of a successful transfer: the domain being in the account is what proves it.
+        $http = (new ScriptedHttpClient())
+            ->json(404, ['error' => 'No transfer found for domain: example.com', 'status' => 404])
+            ->envelope(200, Fixtures::info());
+        $arrived = Fixtures::service($http)->transferProgress(self::domain());
+
+        self::assertSame(TransferState::Completed, $arrived->state);
+        self::assertSame('/v2/domains/example.com/info', $http->requests[1]->path());
+        self::assertCount(2, $http->requests, 'no history is read once the domain is there');
+    }
+
+    public function testARejectedTransferIsFoundInOsirsHistory(): void
+    {
+        $http = (new ScriptedHttpClient())
+            ->json(404, ['error' => 'No transfer found for domain: example.com', 'status' => 404])
+            ->json(404, ['error' => 'Domain not found: example.com', 'status' => 404])
+            ->json(200, self::history([
+                self::historyRow(['domain' => 'other.com', 'createdAt' => '2026-11-24T09:00:00']),
+                self::historyRow(),
+            ]));
+        $failed = Fixtures::service($http)->transferProgress(self::domain());
+
+        self::assertSame(TransferState::Failed, $failed->state);
+        self::assertStringContainsString('rejected', $failed->message);
+        self::assertStringContainsString('2026-11-20', $failed->message);
+        self::assertStringContainsString('Other Registrar Ltd', $failed->message);
+        self::assertSame('/v2/transfer/gaining', $http->requests[2]->path());
+        // OSIR's history endpoint takes no environment, exactly like the status endpoint above.
+        self::assertSame(['status' => 'REJECTED', 'page' => '0', 'size' => '100'], $http->requests[2]->query());
+    }
+
+    public function testNothingToFindLeavesTheOrderPending(): void
+    {
+        // A transfer that has not started, and a history that does not mention the domain.
+        $http = (new ScriptedHttpClient())
+            ->json(404, ['error' => 'No transfer found for domain: example.com', 'status' => 404])
+            ->json(404, ['error' => 'Domain not found: example.com', 'status' => 404])
+            ->json(200, self::history([self::historyRow(['domain' => 'other.com'])]));
+        $waiting = Fixtures::service($http)->transferProgress(self::domain());
+
+        self::assertSame(TransferState::Pending, $waiting->state);
+        self::assertStringContainsString('no record', $waiting->message);
+    }
+
+    public function testAHistoryOsirWillNotAnswerKeepsTheOrderPending(): void
+    {
+        // An older OSIR without the history endpoint, or one having a bad day: the check repeats
+        // later rather than failing a paid order on a missing answer.
+        $logger = new CapturingLogger();
+        $http = (new ScriptedHttpClient())
+            ->json(404, ['error' => 'No transfer found for domain: example.com', 'status' => 404])
+            ->json(404, ['error' => 'Domain not found: example.com', 'status' => 404])
+            ->json(404, ['error' => 'Not Found', 'status' => 404]);
+        $waiting = Fixtures::service($http, logger: $logger)->transferProgress(self::domain());
+
+        self::assertSame(TransferState::Pending, $waiting->state);
+        self::assertStringContainsString('transfer history', $logger->all());
+    }
+
+    public function testAnOutgoingTransferIsNotAnIncomingOne(): void
+    {
+        // OSIR answers the status endpoint with a losing record when there is no gaining one.
+        $http = (new ScriptedHttpClient())
+            ->json(200, ['domain' => 'example.com', 'status' => 'PENDING', 'transferType' => 'LOSING'])
+            ->envelope(200, Fixtures::info());
+        $leaving = Fixtures::service($http)->transferProgress(self::domain());
+        self::assertSame(TransferState::Completed, $leaving->state, 'it arrived, and is now on its way out again');
+
+        $http = (new ScriptedHttpClient())
+            ->json(200, ['domain' => 'example.com', 'status' => 'PENDING', 'transferType' => 'LOSING'])
+            ->json(404, ['error' => 'Domain not found: example.com', 'status' => 404])
+            ->json(200, self::history([]));
+        $neither = Fixtures::service($http)->transferProgress(self::domain());
+        self::assertSame(TransferState::Pending, $neither->state);
+        self::assertStringContainsString('no incoming transfer', $neither->message);
+    }
+
+    public function testTransferProgressPassesOnErrorsSoTheCheckIsRepeated(): void
+    {
+        $http = (new ScriptedHttpClient())->json(403, ['error' => 'Customer is not the owner of this domain', 'status' => 403]);
+        $this->expectException(ApiException::class);
+        Fixtures::service($http)->transferProgress(self::domain());
     }
 }

@@ -13,7 +13,7 @@ use Osir\FossBilling\Service\OrderRef;
  * Translates between FOSSBilling's registrar objects and the adapter's own types.
  * This is the only class (besides the adapter) that touches Registrar_Domain / Registrar_Domain_Contact.
  */
-final class FossBillingMapper
+final class PlatformMapper
 {
     /** @throws ValidationException */
     public static function domainName(\Registrar_Domain $domain): DomainName

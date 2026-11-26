@@ -393,4 +393,51 @@ final class AdapterTest extends TestCase
         self::assertNotSame('', $this->logger->all());
         self::assertStringNotContainsString('AbCdEfGhIjKl', $this->logger->all());
     }
+
+    // ---------------------------------------------------- the two ClientFence capabilities
+    //
+    // The generated ClientFence build declares Registrar_TldPrices and Registrar_TransferStatus
+    // (dev/scripts/make-clientfence.sh); the methods themselves are the same in both builds, so
+    // they are tested here, against the shapes those interfaces specify.
+
+    public function testTldPricesAreTheRegistrarsCostInItsOwnCurrency(): void
+    {
+        $this->http
+            ->json(200, ['totalExtensions' => 1, 'extensions' => [[
+                'extension' => '.com', 'registrationPrice' => 1039, 'renewalPrice' => 1200, 'transferPrice' => 900,
+                'minRegistrationPeriod' => 1, 'maxRegistrationPeriod' => 10, 'minCharacters' => 2, 'maxCharacters' => 63,
+                'hasPremium' => false, 'hasRestrictions' => false, 'extensionType' => 'gTLD',
+            ]]])
+            ->json(200, ['domain' => 'x.com', 'registrationYears' => 1, 'totalCost' => 1039, 'standardTotalCost' => 1039, 'totalFees' => 1089, 'premium' => false, 'valid' => true]);
+
+        $answer = $this->adapter()->getTldPrices();
+
+        self::assertSame('USD', $answer['currency']);
+        self::assertSame(['register' => 10.89, 'renew' => 12.5, 'transfer' => 9.5], $answer['prices']['.com']);
+        self::assertSame([], $answer['remaining']);
+    }
+
+    public function testTldPricesReportFailuresThePlatformCanShow(): void
+    {
+        $this->http->json(500, null);
+        $this->expectException(\Registrar_Exception::class);
+        $this->adapter()->getTldPrices(['.com']);
+    }
+
+    public function testTransferStatusSpeaksTheInterfacesVocabulary(): void
+    {
+        $this->http
+            ->json(200, ['domain' => 'example.com', 'status' => 'PENDING', 'transferType' => 'GAINING'])
+            ->json(200, ['domain' => 'example.com', 'status' => 'APPROVED', 'transferType' => 'GAINING'])
+            ->json(200, ['domain' => 'example.com', 'status' => 'REJECTED', 'transferType' => 'GAINING']);
+        $adapter = $this->adapter();
+
+        self::assertSame('pending', $adapter->getTransferStatus(self::domain())['status']);
+        self::assertSame('completed', $adapter->getTransferStatus(self::domain())['status']);
+        $failed = $adapter->getTransferStatus(self::domain());
+        self::assertSame('failed', $failed['status']);
+        self::assertIsString($failed['message']);
+        self::assertStringContainsString('rejected', $failed['message']);
+        self::assertStringContainsString('failed', $this->logger->all(), 'staff can see the answer in the log too');
+    }
 }

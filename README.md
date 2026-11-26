@@ -34,7 +34,7 @@ register, renew or transfer a domain twice. See [How it keeps your balance safe]
 
 | | |
 |---|---|
-| FOSSBilling | **0.8.9** (tested); 0.8.7 and 0.8.8 also work. ClientFence 1.0.62 is tested too, see [ClientFence](#clientfence). 0.8.7 is the first release that masks secret settings in the admin panel; `osir-doctor` reports older versions as a failure. Run 0.8.9 if you can: it is a security release. |
+| FOSSBilling | **0.8.9** (tested); 0.8.7 and 0.8.8 also work. ClientFence **1.0.62** is tested too, and is the oldest ClientFence the two optional capabilities work on — see [ClientFence](#clientfence). 0.8.7 is the first release that masks secret settings in the admin panel; `osir-doctor` reports older versions as a failure. Run 0.8.9 if you can: it is a security release. |
 | PHP | 8.3, 8.4 or 8.5, with `intl` (FOSSBilling already requires it) |
 | OSIR | An OSIR account with API access and a funded balance |
 
@@ -239,12 +239,38 @@ separate archive for it, built from the same sources and tested the same way.
 Install `osir-clientfence-registrar-<version>.zip` exactly as on FOSSBilling: verify the checksum, extract it
 into your ClientFence root (it adds only `library/Registrar/Adapter/Osir*` and `modules/Osir`), install **Osir**
 under **Domain Management → Registrars**, add your API key, and activate the **OSIR domains** module under
-**Extensions**. `osir-doctor` works there too and reports your ClientFence version.
+**Extensions**. `osir-doctor` works there too and reports your ClientFence version. On a ClientFence older
+than 1.0.62 the registrar still works; the two capabilities below are simply not there to use.
+
+ClientFence adds two optional capabilities to the registrar contract, and this plugin implements both:
+
+- **TLDs and prices.** Under **Domain Registration → OSIR → TLDs and prices**, ClientFence fetches OSIR's
+  price list itself (the cost of one year per action in USD, fees included, ten TLDs per call until the list
+  is complete), applies your markup, rounding and currency rate, shows every TLD with its old and new price,
+  and writes the ones you tick. Its scheduled sync is off until you turn it on — remember that re-pricing a
+  TLD also changes what existing domains of that TLD pay at their next renewal. A TLD OSIR cannot quote
+  right now is left out of the list and logged, so an existing price is never overwritten with a guess.
+  The plugin's own **OSIR import** page still works on both platforms and is the one to use on FOSSBilling;
+  it also previews prices and imports the domains you already hold.
+
+  Two things to know before you leave that page's scheduled sync to itself. **It costs a live quote per
+  TLD** — OSIR has no bulk price list, so a complete refresh of its ~470 extensions is ~470 quote requests,
+  ten per call, and staff will click *Get price list* several times before it finishes. And **only the
+  registration cost is quoted**: OSIR does not quote a renewal or a transfer for a name that is not in your
+  account, so those two are its list price plus the same fees, raised when the live registration price is
+  higher. If a registry raises renewals without raising registrations, the renewal cost here can be below
+  what you will actually pay. The TLDs whose figures were worked out that way are named in the system log
+  each time, and applying prices is a decision worth keeping in your own hands.
+- **Transfer tracking.** An incoming transfer stays pending until the registry has actually moved the
+  domain, instead of counting as done when OSIR accepts the request. A rejection fails the order with
+  the date and the other registrar, as long as OSIR still lists it among the last 100 incoming transfers;
+  anything unclear keeps the order pending, and ClientFence tells staff after 14 days of that.
 
 Two differences worth knowing:
 
 - **Use ClientFence's own theme.** The OSIR theme in this repository is built on FOSSBilling's Huraga, which
-  ClientFence does not ship; install only the registrar archive there.
+  ClientFence does not ship — and its pages carry inline scripts that ClientFence's script policy would
+  block. Install only the registrar archive there.
 - **The DNS page needs a link.** ClientFence has no extension point for adding a tab to the domain page, so
   with the stock palisade theme the page is reachable at `/osir/dns/<order id>` but nothing points to it. To
   add the link, copy `themes/palisade/html/mod_servicedomain_manage.html.twig` into your own theme and put

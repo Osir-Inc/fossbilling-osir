@@ -9,8 +9,8 @@ declare(strict_types=1);
  * needs (Symfony HttpClient, intl). This file only registers a loader and is safe to include
  * more than once or to request directly over HTTP (it has no other side effects).
  */
-if (!defined('OSIR_FOSSBILLING_AUTOLOADER')) {
-    define('OSIR_FOSSBILLING_AUTOLOADER', true);
+if (!defined('OSIR_ADAPTER_AUTOLOADER')) {
+    define('OSIR_ADAPTER_AUTOLOADER', true);
 
     spl_autoload_register(static function (string $class): void {
         $prefix = 'Osir\\FossBilling\\';

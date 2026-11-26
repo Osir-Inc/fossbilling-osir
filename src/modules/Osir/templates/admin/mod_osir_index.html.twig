@@ -179,7 +179,7 @@
 
 {% block js %}
 {% if registrars is not empty %}
-<script>
+<script{% if csp_nonce is defined %} nonce="{{ csp_nonce }}"{% endif %}>
 (() => {
     'use strict';
     const root = document.getElementById('osir-import');
@@ -270,13 +270,13 @@
         // A row with a result from this session stays in view, even if importing it moved it out
         // of the current filter (e.g. "Not in FOSSBilling").
         if (row.status) return true;
-        if (f === 'new') return row.fossbilling === null;
-        if (f === 'mine') return row.fossbilling !== null && row.fossbilling.same_registrar;
+        if (f === 'new') return row.platform === null;
+        if (f === 'mine') return row.platform !== null && row.platform.same_registrar;
         return true;
     };
 
     const renderTldRow = (row) => {
-        const fb = row.fossbilling;
+        const fb = row.platform;
         const box = el('input', { type: 'checkbox', class: 'form-check-input', 'aria-label': row.display });
         box.checked = tld.selected.has(row.tld);
         const blocked = fb !== null && !fb.same_registrar;
@@ -351,7 +351,7 @@
                         if (!row) continue;
                         Object.assign(row, { cost: r.cost ?? row.cost, price: r.price ?? row.price, estimated: r.estimated ?? row.estimated, status: r.status, message: r.message ?? null });
                         if (r.status === 'created' || r.status === 'updated') {
-                            row.fossbilling = { same_registrar: true, registrar: '', price: r.price };
+                            row.platform = { same_registrar: true, registrar: '', price: r.price };
                         }
                     }
                 } catch (e) {
@@ -375,7 +375,7 @@
     $('osir-tld-filter').addEventListener('change', renderTlds);
     $('osir-tld-select-shown').addEventListener('click', () => {
         for (const row of tld.rows.values()) {
-            if (tldVisible(row) && (row.fossbilling === null || row.fossbilling.same_registrar)) tld.selected.add(row.tld);
+            if (tldVisible(row) && (row.platform === null || row.platform.same_registrar)) tld.selected.add(row.tld);
         }
         renderTlds();
     });

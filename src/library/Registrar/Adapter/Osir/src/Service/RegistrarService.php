@@ -9,6 +9,7 @@ use Osir\FossBilling\Domain\DomainName;
 use Osir\FossBilling\Domain\Nameservers;
 use Osir\FossBilling\Exception\ApiErrorKind;
 use Osir\FossBilling\Exception\ApiException;
+use Osir\FossBilling\Exception\OsirException;
 use Osir\FossBilling\Exception\RuleException;
 use Osir\FossBilling\Exception\ValidationException;
 use Osir\FossBilling\Http\ApiClient;
@@ -20,6 +21,8 @@ use Osir\FossBilling\Mapping\ContactData;
 use Osir\FossBilling\Mapping\ContactMapper;
 use Osir\FossBilling\Mapping\DomainInfo;
 use Osir\FossBilling\Mapping\DomainInfoParser;
+use Osir\FossBilling\Mapping\TransferProgress;
+use Osir\FossBilling\Mapping\TransferState;
 use Osir\FossBilling\Support\SafeLogger;
 
 /**
@@ -43,6 +46,8 @@ final class RegistrarService
     private const int MAX_KEY_ATTEMPTS = 5;
     /** Clock skew tolerated between FOSSBilling's order time and the registry's creation date. */
     private const int ORDER_CLOCK_SLACK_SECONDS = 3600;
+    /** OSIR's maximum page size for the transfer history. */
+    private const int HISTORY_PAGE_SIZE = 100;
 
     private const string P_AVAILABLE = '/v2/domains/{domain}/available';
     private const string P_QUOTE = '/v2/domains/{domain}/quote';
@@ -58,6 +63,8 @@ final class RegistrarService
     private const string P_PRIVACY_ON = '/v2/domains/{domain}/privacy/enable';
     private const string P_PRIVACY_OFF = '/v2/domains/{domain}/privacy/disable';
     private const string P_TRANSFER_STATUS = '/v2/transfer/{domain}/status';
+    /** Incoming transfers in any status, newest first; OSIR has no per-domain variant. */
+    private const string P_TRANSFER_HISTORY = '/v2/transfer/gaining';
     private const string P_REGISTER = '/v2/domains/register';
     private const string P_TRANSFER = '/v2/transfer/initiate';
     private const string P_BALANCE = '/v1/payment/balance';
@@ -151,6 +158,154 @@ final class RegistrarService
         }
 
         return true;
+    }
+
+    /**
+     * Where an incoming transfer stands. Only three answers matter to a billing platform, and the
+     * safe one is "pending": it is given whenever OSIR's answer does not plainly say the transfer
+     * finished or was rejected, so an order is never closed or failed on a guess.
+     *
+     * OSIR's status endpoint answers for PENDING transfers only, so a transfer that is over —
+     * either way — is a 404 there. What became of it is then read from the account (the domain
+     * arrived) and from OSIR's transfer history (it was rejected).
+     */
+    public function transferProgress(DomainName $domain): TransferProgress
+    {
+        try {
+            $data = $this->api->send(ApiRequest::get(ApiRequest::path(self::P_TRANSFER_STATUS, $domain))->unwrapped())->data;
+        } catch (ApiException $e) {
+            if ($e->getKind() !== ApiErrorKind::NotFound) {
+                throw $e;
+            }
+
+            return $this->finishedTransfer($domain);
+        }
+
+        if (strtoupper(self::text($data['transferType'] ?? null)) !== 'GAINING') {
+            // The pending record is for a transfer AWAY from OSIR, or OSIR did not say which way
+            // it goes. Neither says anything about the incoming one; the account does.
+            return $this->finishedTransfer($domain, 'OSIR reports no incoming transfer for this domain. Check it in the OSIR panel.');
+        }
+
+        $status = strtoupper(self::text($data['status'] ?? null));
+
+        return match ($status) {
+            'PENDING', 'NOTIFIED' => new TransferProgress(TransferState::Pending, 'The transfer is pending at the registry.' . self::expectedBy($data) . self::facing($data)),
+            // OSIR does not report a finished transfer here today (the endpoint answers for pending
+            // ones only), but a plain answer is acted on if one ever arrives.
+            'APPROVED', 'EXPIRED_COMPLETED' => new TransferProgress(TransferState::Completed, 'The registry approved the transfer.' . self::completedOn($data)),
+            'REJECTED' => new TransferProgress(TransferState::Failed, 'The transfer was rejected.' . self::facing($data)),
+            default => new TransferProgress(TransferState::Pending, sprintf('OSIR reports the transfer as "%s".', $status === '' ? 'unknown' : mb_substr($status, 0, 40))),
+        };
+    }
+
+    /**
+     * What became of a transfer OSIR no longer has pending. The domain being in the account is the
+     * only proof that it arrived; a rejection is only recorded in the transfer history. Anything
+     * else leaves the order pending, which is the answer that cannot do harm.
+     */
+    private function finishedTransfer(DomainName $domain, ?string $pending = null): TransferProgress
+    {
+        $info = $this->infoOrNull($domain);
+        if ($info !== null && !$info->status->isGone()) {
+            return new TransferProgress(TransferState::Completed, 'The domain is in the OSIR account. OSIR has no transfer pending for it.');
+        }
+
+        $rejected = $this->rejectedTransfer($domain);
+        if ($rejected !== null) {
+            return new TransferProgress(TransferState::Failed, $rejected);
+        }
+
+        return new TransferProgress(TransferState::Pending, $pending ?? 'OSIR has no record of a transfer for this domain yet.');
+    }
+
+    /**
+     * The most recent rejected incoming transfer of this domain, as a sentence, or null.
+     *
+     * OSIR answers its transfer history newest first and cannot filter by name, so only the first
+     * page is read: a rejection older than that is left to the platform's own "still pending"
+     * escalation rather than paging through a reseller's whole history on every check. A history
+     * OSIR cannot or will not answer is treated as "nothing found", so the check simply repeats.
+     */
+    private function rejectedTransfer(DomainName $domain): ?string
+    {
+        try {
+            $data = $this->api->send(ApiRequest::get(self::P_TRANSFER_HISTORY, ['status' => 'REJECTED', 'page' => 0, 'size' => self::HISTORY_PAGE_SIZE])->unwrapped())->data;
+        } catch (OsirException $e) {
+            $this->log->warning(sprintf('Could not read OSIR\'s transfer history for %s: %s', $domain, $e->getMessage()));
+
+            return null;
+        }
+
+        $rows = $data['data'] ?? null;
+        if (!is_array($rows)) {
+            return null;
+        }
+        foreach ($rows as $row) {
+            if (!is_array($row)
+                || strtolower(self::text($row['domain'] ?? null)) !== $domain->ascii()
+                || strtoupper(self::text($row['status'] ?? null)) !== 'REJECTED'
+                || !in_array(strtoupper(self::text($row['transferType'] ?? null)), ['', 'GAINING'], true)) {
+                continue;
+            }
+
+            return 'OSIR reports the transfer as rejected.' . self::requestedOn($row) . self::facing($row);
+        }
+
+        return null;
+    }
+
+    /** @param array<mixed> $row */
+    private static function requestedOn(array $row): string
+    {
+        $date = self::date($row['createdAt'] ?? null);
+
+        return $date === null ? '' : ' Requested on ' . $date . '.';
+    }
+
+    /** @param array<mixed> $data */
+    private static function completedOn(array $data): string
+    {
+        $date = self::date($data['transferCompletedDate'] ?? null);
+
+        return $date === null ? '' : ' Completed on ' . $date . '.';
+    }
+
+    /** @param array<mixed> $data */
+    private static function expectedBy(array $data): string
+    {
+        $date = self::date($data['expectedCompletionDate'] ?? null);
+
+        return $date === null ? '' : ' Expected to complete by ' . $date . '.';
+    }
+
+    /** A field OSIR may or may not send, as trimmed text. */
+    private static function text(mixed $value): string
+    {
+        return is_string($value) ? trim($value) : '';
+    }
+
+    /**
+     * The other registrar's name, when OSIR reports one; it is public registry information.
+     *
+     * @param array<mixed> $data
+     */
+    private static function facing(array $data): string
+    {
+        $name = self::text($data['facingRegistrar'] ?? null);
+
+        return $name === '' ? '' : sprintf(' Other registrar: %s.', mb_substr($name, 0, 60));
+    }
+
+    /** OSIR sends timestamps; only the day is useful in a sentence, and only if it parses. */
+    private static function date(mixed $value): ?string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+        $time = strtotime($value);
+
+        return $time === false ? null : gmdate('Y-m-d', $time);
     }
 
     /** Account balance in USD cents (diagnostics). */
