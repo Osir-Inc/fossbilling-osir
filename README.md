@@ -67,16 +67,33 @@ FOSSBilling cannot install domain registrars from its extension directory yet, s
 
 ### Upgrading
 
-Replace the adapter paths and `modules/Osir` with the new release's files — delete `modules/Osir` first if your
-file manager will not merge folders, so that files removed in the new version do not linger. Settings are stored
-by FOSSBilling and are kept; there is no database migration.
+**Delete the old files first, then upload — do not extract over them:**
+
+```
+library/Registrar/Adapter/Osir.php     (the file)
+library/Registrar/Adapter/Osir/        (the folder of the same name)
+modules/Osir/                          (the module)
+```
+
+Then extract the new release and restart PHP (or clear the opcode cache, e.g. `php-fpm` reload). Settings are
+stored by FOSSBilling and are kept; there is no database migration.
+
+Why deleting matters: the adapter is a *file* next to a *folder with the same name*. Many file managers
+replace one and skip the other, an opcode cache can keep serving the old file although the new one is on disk,
+and files that a release removes linger. The result is one half of the plugin on the new release and the other
+half on the old one. The plugin detects that and tells you, instead of letting PHP report a missing class — but
+deleting first avoids it altogether.
+
+- **From 1.4.x or older, on ClientFence:** this matters most there, because 1.5.0 renamed the plugin's own
+  internal namespace in the ClientFence build. A leftover `Osir.php` from 1.4.0 cannot see the new library's
+  classes at all.
 
 - **From 1.1.x:** the module gained the client-area DNS page. Nothing to configure, but the module must be
   active (step 5 above) and, to link to it, the theme needs the snippet below or the OSIR theme 1.2.1+.
 - **From 1.0.x with Test Mode in use:** read the 1.1.0 upgrade notes in `CHANGELOG.md` first.
 
 If you use the OSIR theme, upgrade it from the same release so its version matches the plugin's. Then run
-`osir-doctor`.
+`osir-doctor`: it prints the adapter's version and the module's, and fails if they differ.
 
 ### Uninstalling
 
@@ -388,6 +405,12 @@ sudo -u www-data php library/Registrar/Adapter/Osir/bin/osir-doctor.php --domain
 It checks the FOSSBilling version, the configuration, TLS, the API key, your balance and, optionally, one
 domain. It only reads and never changes anything. It exits with status 1 when a check fails, and 2 when it
 cannot run at all.
+
+**"The OSIR plugin's files come from two different releases"**, or PHP reporting a class such as
+`Osir\FossBilling\Config\SettingsResolver` or `Osir\FossBilling\Support\SafeLogger` as not found, or an
+`undefined method …\Osir\Service::dnsOverview()`: the upload left one half of the plugin on an older release.
+Delete the three paths listed under [Upgrading](#upgrading), upload the archive again, and restart PHP.
+`osir-doctor` shows the adapter's and the module's version side by side.
 
 Errors from the connection or from OSIR end with `Reference: <id>`. Search the FOSSBilling log (**System →
 Logs**, or `data/log/`) for that id to see what OSIR answered, and quote it to OSIR support. Other messages,

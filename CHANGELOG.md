@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-11-26
+
+### Fixed
+- **A half-finished upload now says so, instead of "class not found".** Upgrading to 1.5.0 by uploading over
+  the old files can leave the two halves of the plugin on different releases, because the adapter is a file
+  (`library/Registrar/Adapter/Osir.php`) beside a folder of the same name (`library/Registrar/Adapter/Osir/`):
+  a file manager that will not replace the file, an opcode cache still serving the old one, or an upload that
+  stopped halfway leaves the old `Osir.php` next to the new library. Since 1.5.0 renamed the plugin's own
+  namespace in the ClientFence build, the only symptom was PHP reporting
+  `Class "Osir\FossBilling\Config\SettingsResolver" not found` (or `…\Support\SafeLogger`), which tells an
+  administrator nothing.
+
+  Three things now catch it and name the paths to delete and upload again: the adapter's autoloader answers a
+  request for the old namespace with that message, the adapter refuses to start when its own classes are
+  missing or when the module's version differs from its own, and the module's API does the same when its
+  `Service.php` is older than the file calling it (the cause of the `undefined method …::dnsOverview()` error
+  some installs saw after 1.2.1).
+- `osir-doctor` lists the **module version** beside the adapter version, and fails when they differ.
+
+### Changed
+- The upgrade instructions now say to delete `library/Registrar/Adapter/Osir.php`, the folder
+  `library/Registrar/Adapter/Osir` and the folder `modules/Osir` before uploading a new release, rather than
+  extracting over them.
+
 ## [1.5.0] - 2026-11-26
 
 ### Fixed

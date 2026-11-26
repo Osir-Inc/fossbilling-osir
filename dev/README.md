@@ -86,3 +86,19 @@ access to a second repository.
 
 What the rename covers: `Box\Mod\*`, `Box_App`, `Box_Database`, `Box_Log`, `Box_Url`, `FOSSBilling\*`,
 the browser-side `FOSSBilling.api.*` helper, and plain mentions in our own strings and documentation.
+
+## A stale Osir.php in the container
+
+`dev/docker-compose.yml` mounts `src/library/Registrar/Adapter/Osir.php` as a single **file**, and a file bind
+mount follows the inode, not the path. Anything that replaces the file rather than writing into it —
+`php-cs-fixer` (so `make cs-fix`), `git checkout`, `sed -i`, most editors with atomic saves — leaves the
+container looking at the old copy while the new one is on disk. The symptom is the stack behaving like an
+older release: a method the file now has reported as undefined.
+
+Recreate the container after such a change:
+
+```sh
+docker compose --project-directory dev -f dev/docker-compose.yml up -d --force-recreate fossbilling
+```
+
+`make up` does it too. The other two mounts are directories and do not have this problem.

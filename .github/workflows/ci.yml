@@ -98,6 +98,9 @@ jobs:
           # would fatal on the class declaration and lose the whole registrar
           grep -q "interface_exists('Registrar_TldPrices')" build/clientfence/library/Registrar/Adapter/Osir.php
           grep -q "interface_exists('Registrar_TransferStatus')" build/clientfence/library/Registrar/Adapter/Osir.php
+          # the half-finished-upgrade guard: the live prefix is rewritten, the 1.4.0 one must not be
+          grep -qF 'Osir\\ClientFence\\' build/clientfence/library/Registrar/Adapter/Osir/autoload.php
+          grep -qF "'Foss' . 'Billing" build/clientfence/library/Registrar/Adapter/Osir/autoload.php
       - name: The build loads on a ClientFence that has neither capability
         run: |
           cat > /tmp/older-clientfence.php <<'PHP'

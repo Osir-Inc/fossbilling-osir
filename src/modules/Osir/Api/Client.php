@@ -123,6 +123,13 @@ class Client extends \FOSSBilling\Api\AbstractApi
         if (!$service instanceof \Box\Mod\Osir\Service) {
             throw new \LogicException('Unexpected module service.');
         }
+        // This file and Service.php are uploaded together, so a Service.php without the version
+        // helper is an older one left behind by a half-finished upload - the cause of the "undefined
+        // method" and "class not found" errors that otherwise say nothing an administrator can act on.
+        // @phpstan-ignore function.alreadyNarrowedType (true of the file on disk now, not of the one PHP may have cached or kept)
+        if (!method_exists($service, 'version')) {
+            throw new InformationException('The OSIR module\'s files come from two different releases. Delete the folder modules/Osir and the OSIR adapter (the file library/Registrar/Adapter/Osir.php and the folder library/Registrar/Adapter/Osir), upload the archive for this platform again, and restart PHP (or clear the opcode cache).');
+        }
         $service->loadLibrary();
 
         return $service;

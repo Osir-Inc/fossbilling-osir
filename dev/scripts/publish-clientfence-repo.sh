@@ -22,8 +22,8 @@ ZIP="dist/osir-clientfence-registrar-${VERSION}.zip"
 dev/scripts/make-clientfence.sh --check >/dev/null
 
 # The public identity for everything OSIR publishes; never a person's name or address.
-export GIT_AUTHOR_NAME=OSIR GIT_AUTHOR_EMAIL=noreply@osir.com
-export GIT_COMMITTER_NAME=OSIR GIT_COMMITTER_EMAIL=noreply@osir.com
+export GIT_AUTHOR_NAME=OSIR GIT_AUTHOR_EMAIL=osir@users.noreply.github.com
+export GIT_COMMITTER_NAME=OSIR GIT_COMMITTER_EMAIL=osir@users.noreply.github.com
 
 rm -rf "$WORK"
 if gh repo view "$REPO" >/dev/null 2>&1; then
@@ -60,7 +60,7 @@ patterns=$(
 leaked=0
 while read -r needle; do
   [[ -z "$needle" || ${#needle} -lt 4 ]] && continue
-  if grep -rniFq -- "$needle" . --exclude-dir=.git; then
+  if grep -rniFq --exclude-dir=.git -e "$needle" .; then
     echo "Found '${needle}' in the generated tree; not pushing." >&2
     leaked=1
   fi

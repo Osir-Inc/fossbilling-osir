@@ -56,6 +56,23 @@ class Service implements InjectionAwareInterface
     /** Short: the DNS tab is per client and must show a change they just made. */
     private const int DNS_TTL = 20;
 
+    /**
+     * The release this module was shipped as, from its own manifest. Its presence is also how the
+     * API classes tell a half-finished upload apart from a working one.
+     */
+    public static function version(): string
+    {
+        if (self::$version === null) {
+            $data = json_decode((string) @file_get_contents(__DIR__ . '/manifest.json'), true);
+            $value = is_array($data) ? ($data['version'] ?? null) : null;
+            self::$version = is_string($value) && $value !== '' ? $value : 'unknown';
+        }
+
+        return self::$version;
+    }
+
+    private static ?string $version = null;
+
     protected ?\Pimple\Container $di = null;
 
     /** @var array<int, ImportService> one adapter per registrar and request */

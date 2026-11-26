@@ -21,6 +21,8 @@ final class Diagnostics
     public function __construct(
         private readonly RegistrarService $service,
         private readonly Settings $settings,
+        /** The companion module's version, or null when it is not installed. */
+        private readonly ?string $moduleVersion = null,
     ) {}
 
     /** @return list<array{check: string, status: 'ok'|'warn'|'fail', detail: string}> */
@@ -28,6 +30,13 @@ final class Diagnostics
     {
         $results = [];
         $results[] = self::result('Adapter version', 'ok', Version::PLUGIN);
+        // The two halves of the plugin are uploaded as one archive, so a difference here means a
+        // half-finished upgrade - the usual cause of a bare "class not found" in the panel.
+        $results[] = match (true) {
+            $this->moduleVersion === null => self::result('Module version', 'warn', 'the OSIR module is not installed (the registrar works without it; the import page and the client DNS tab need it)'),
+            $this->moduleVersion !== Version::PLUGIN => self::result('Module version', 'fail', sprintf('%s, but this adapter is %s - upload the archive again so both come from one release', $this->moduleVersion, Version::PLUGIN)),
+            default => self::result('Module version', 'ok', $this->moduleVersion),
+        };
         $platform = class_exists(\FOSSBilling\Version::class) ? \FOSSBilling\Version::VERSION : null;
         // ClientFence, the fork, keeps VERSION on its FOSSBilling lineage (what the compatibility
         // check below needs) and numbers its own releases separately. Report the number the
